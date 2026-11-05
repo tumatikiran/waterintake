@@ -1,0 +1,91 @@
+/**
+ * Character-library rules shared by the desktop store (files on disk) and the
+ * Android store (app storage): validation, limits and record shapes.
+ */
+import type { CharacterInfo, CharacterRecipe } from './types';
+import { sanitizeRecipe } from './recipe';
+
+/** The bundled character (assets/models/human-character.glb). */
+export const BUILTIN_CHARACTER: CharacterInfo = { id: 'default', name: 'Aqua', kind: 'builtin', revision: 1, createdAt: 0 };
+
+export const CHARACTER_LIMITS = {
+  uploadBytes: 30 * 1024 * 1024,
+  createdBytes: 10 * 1024 * 1024,
+  thumbnailChars: 600_000,
+};
+
+export const CHARACTER_ID = /^c_[0-9a-f]{12}$/;
+
+export function newCharacterId(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(6));
+  return `c_${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
+}
+
+export const cleanName = (name: unknown, fallback: string): string =>
+  (typeof name === 'string' ? name : '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40) || fallback;
+
+export const cleanThumbnail = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.startsWith('data:image/png;base64,') && v.length <= CHARACTER_LIMITS.thumbnailChars ? v : undefined;
+
+/** "Robo Buddy.glb" → "Robo Buddy" */
+export const nameFromFile = (fileName: string): string => cleanName(fileName.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, ''), 'My character');
+
+/** Throws a user-readable error unless the bytes are a complete binary glTF 2.0 file. */
+export function assertGlb(data: Uint8Array): void {
+  if (data.byteLength < 20) throw new Error('The file is empty or too small to be a 3D model.');
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (view.getUint32(0, true) !== 0x46546c67) throw new Error('This is not a binary glTF (.glb) file.');
+  if (view.getUint32(4, true) !== 2) throw new Error('Only glTF 2.0 models are supported.');
+  if (view.getUint32(8, true) !== data.byteLength) throw new Error('The file looks truncated or corrupted.');
+}
+
+/** Validates a stored character index (custom characters only; the built-in one is never stored). */
+export function sanitizeCharacterIndex(v: unknown): CharacterInfo[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((raw): CharacterInfo[] => {
+    if (typeof raw !== 'object' || raw === null) return [];
+    const r = raw as Record<string, unknown>;
+    if (typeof r.id !== 'string' || !CHARACTER_ID.test(r.id) || (r.kind !== 'created' && r.kind !== 'uploaded')) return [];
+    return [
+      {
+        id: r.id,
+        name: cleanName(r.name, 'My character'),
+        kind: r.kind,
+        revision: typeof r.revision === 'number' && r.revision > 0 ? Math.floor(r.revision) : 1,
+        thumbnail: cleanThumbnail(r.thumbnail),
+        recipe: r.kind === 'created' ? sanitizeRecipe(r.recipe) : undefined,
+        animations: Array.isArray(r.animations) ? r.animations.filter((a) => typeof a === 'string').slice(0, 20) : undefined,
+        createdAt: typeof r.createdAt === 'number' ? r.createdAt : Date.now(),
+      },
+    ];
+  });
+}
+
+export function uploadedRecord(id: string, fileName: string): CharacterInfo {
+  return { id, name: nameFromFile(fileName), kind: 'uploaded', revision: 1, createdAt: Date.now() };
+}
+
+export function createdRecord(
+  id: string,
+  input: { name: unknown; recipe: unknown; thumbnail: unknown },
+  existing?: CharacterInfo,
+): CharacterInfo {
+  return {
+    id,
+    name: cleanName(input.name, 'My character'),
+    kind: 'created',
+    revision: (existing?.revision ?? 0) + 1,
+    thumbnail: cleanThumbnail(input.thumbnail),
+    recipe: sanitizeRecipe(input.recipe) as CharacterRecipe,
+    createdAt: existing?.createdAt ?? Date.now(),
+  };
+}
+
+/** Applies a rename / new thumbnail / detected animations. */
+export function patchRecord(item: CharacterInfo, patch: { name?: unknown; thumbnail?: unknown; animations?: unknown }): CharacterInfo {
+  const next = { ...item };
+  if (patch.name !== undefined) next.name = cleanName(patch.name, item.name);
+  if (patch.thumbnail !== undefined) next.thumbnail = cleanThumbnail(patch.thumbnail) ?? item.thumbnail;
+  if (Array.isArray(patch.animations)) next.animations = patch.animations.filter((a) => typeof a === 'string').slice(0, 20);
+  return next;
+}

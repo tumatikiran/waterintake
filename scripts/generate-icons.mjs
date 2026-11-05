@@ -5,7 +5,7 @@
  *   npm run generate:icons
  */
 import zlib from 'node:zlib';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -134,10 +134,10 @@ const trayColor = (x, y) => {
   return inCircle(x, y, 0.4, 0.58, 0.08) ? [...hex('#d6ebff'), 255] : [...hex('#2f80ed'), 255];
 };
 
-const write = (file, size, paint) => {
+const write = (file, size, paint, ss) => {
   const path = resolve(root, file);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, png(size, render(size, paint)));
+  writeFileSync(path, png(size, render(size, paint, ss)));
   console.log('Wrote', file);
 };
 write('build/icon.png', 1024, appIcon);
@@ -145,3 +145,91 @@ write('assets/tray/trayTemplate.png', 16, trayTemplate);
 write('assets/tray/trayTemplate@2x.png', 32, trayTemplate);
 write('assets/tray/tray.png', 16, trayColor);
 write('assets/tray/tray@2x.png', 32, trayColor);
+
+// ------------------------------------------------------------------ Android
+const res = resolve(root, 'android/app/src/main/res');
+if (existsSync(res)) {
+  const DENSITIES = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
+  const ANDROID_BG = '#3a8eef';
+  // Adaptive icon: the white drop on a blue background layer (Android masks the shape).
+  const foreground = (x, y) => {
+    const u = (x - 0.5) / 0.62 + 0.5; // keep the drop inside the 66% safe zone
+    const v = (y - 0.5) / 0.62 + 0.5;
+    if (!inDrop(u, v, DROP.cx, DROP.cy, DROP.r, DROP.tip)) return [0, 0, 0, 0];
+    if (inCircle(u, v, 0.42, 0.52, 0.035)) return [...hex('#d6ebff'), 255];
+    if (face(u, v)) return [...hex('#1f6fd6'), 255];
+    return [255, 255, 255, 255];
+  };
+  const roundIcon = (x, y) => (inCircle(x, y, 0.5, 0.5, 0.48) ? (foreground(x, y)[3] ? foreground(x, y) : [...hex(ANDROID_BG), 255]) : [0, 0, 0, 0]);
+  // Notification icons must be a white silhouette; the face is cut out.
+  const statusIcon = (x, y) =>
+    inDrop(x, y, 0.5, 0.6, 0.31, 0.04) && !inCircle(x, y, 0.42, 0.62, 0.05) && !inCircle(x, y, 0.58, 0.62, 0.05) ? [255, 255, 255, 255] : [0, 0, 0, 0];
+
+  for (const [density, k] of Object.entries(DENSITIES)) {
+    write(`android/app/src/main/res/mipmap-${density}/ic_launcher.png`, Math.round(48 * k), appIcon);
+    write(`android/app/src/main/res/mipmap-${density}/ic_launcher_round.png`, Math.round(48 * k), roundIcon);
+    write(`android/app/src/main/res/mipmap-${density}/ic_launcher_foreground.png`, Math.round(108 * k), foreground);
+    write(`android/app/src/main/res/drawable-${density}/ic_stat_aquamate.png`, Math.round(24 * k), statusIcon);
+  }
+  writeFileSync(
+    resolve(res, 'values/ic_launcher_background.xml'),
+    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${ANDROID_BG.toUpperCase()}</color>\n</resources>\n`,
+  );
+
+  // Splash screens: the app icon centred on the app background, every size the template uses.
+  const bg = hex('#f3f6fa');
+  const splash = (w, h) => {
+    const side = Math.round(Math.min(w, h) * 0.32);
+    const x0 = (w - side) / 2;
+    const y0 = (h - side) / 2;
+    const out = Buffer.alloc(w * h * 4);
+    const ss = 2;
+    for (let py = 0; py < h; py++) {
+      for (let px = 0; px < w; px++) {
+        const i = (py * w + px) * 4;
+        let r = 0, g = 0, b = 0;
+        const inside = px >= x0 - 1 && px <= x0 + side + 1 && py >= y0 - 1 && py <= y0 + side + 1;
+        for (let sy = 0; sy < (inside ? ss : 1); sy++) {
+          for (let sx = 0; sx < (inside ? ss : 1); sx++) {
+            const [cr, cg, cb, ca] = inside ? appIcon((px + (sx + 0.5) / ss - x0) / side, (py + (sy + 0.5) / ss - y0) / side) : [0, 0, 0, 0];
+            const a = ca / 255;
+            r += cr * a + bg[0] * (1 - a);
+            g += cg * a + bg[1] * (1 - a);
+            b += cb * a + bg[2] * (1 - a);
+          }
+        }
+        const n = inside ? ss * ss : 1;
+        out[i] = Math.round(r / n);
+        out[i + 1] = Math.round(g / n);
+        out[i + 2] = Math.round(b / n);
+        out[i + 3] = 255;
+      }
+    }
+    return out;
+  };
+  const pngRect = (w, h, rgba) => {
+    const raw = Buffer.alloc((w * 4 + 1) * h);
+    for (let y = 0; y < h; y++) rgba.copy(raw, y * (w * 4 + 1) + 1, y * w * 4, (y + 1) * w * 4);
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0);
+    ihdr.writeUInt32BE(h, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 6;
+    return Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      chunk('IHDR', ihdr),
+      chunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
+      chunk('IEND', Buffer.alloc(0)),
+    ]);
+  };
+  const SPLASH = { mdpi: [320, 480], hdpi: [480, 800], xhdpi: [720, 1280], xxhdpi: [960, 1600], xxxhdpi: [1280, 1920] };
+  const writeSplash = (file, w, h) => {
+    writeFileSync(resolve(root, file), pngRect(w, h, splash(w, h)));
+    console.log('Wrote', file);
+  };
+  writeSplash('android/app/src/main/res/drawable/splash.png', 480, 320);
+  for (const [density, [w, h]] of Object.entries(SPLASH)) {
+    writeSplash(`android/app/src/main/res/drawable-port-${density}/splash.png`, w, h);
+    writeSplash(`android/app/src/main/res/drawable-land-${density}/splash.png`, h, w);
+  }
+}

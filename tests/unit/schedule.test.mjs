@@ -94,3 +94,34 @@ test('remainingActiveMinutesToday counts overnight windows up to midnight', () =
   assert.equal(S.remainingActiveMinutesToday([every], t(6, 22)), 0);
   void MIN;
 });
+
+test('planReminders lists the next reminders (Android schedules them ahead)', () => {
+  const plan = S.planReminders({ settings: reminders(), now: t(6, 10), glassesToday: 0, after: 'drank', count: 4 });
+  assert.deepEqual(plan.map((p) => p.at), [t(6, 10, 45), t(6, 11, 30), t(6, 12, 15), t(6, 13)]);
+  assert.ok(plan.every((p) => !p.snoozed));
+});
+
+test('planReminders continues into the next active window', () => {
+  const plan = S.planReminders({ settings: reminders({ intervalMinutes: 60 }), now: t(6, 19, 30), glassesToday: 2, after: 'skip', count: 3 });
+  assert.deepEqual(plan.map((p) => p.at), [t(6, 20, 30), t(7, 9), t(7, 10)]);
+});
+
+test('planReminders: a snooze comes first, then the normal rhythm', () => {
+  const plan = S.planReminders({ settings: reminders(), now: t(6, 12), glassesToday: 1, after: 'later', count: 2 });
+  assert.deepEqual(plan, [
+    { at: t(6, 12, 15), snoozed: true },
+    { at: t(6, 13), snoozed: false },
+  ]);
+});
+
+test('planReminders: while paused, start a minute after the pause ends', () => {
+  const plan = S.planReminders({ settings: reminders(), now: t(6, 12), glassesToday: 1, after: 'start', count: 1, pausedUntil: t(6, 13) });
+  assert.equal(plan[0].at, t(6, 13, 1));
+});
+
+test('planReminders: goal mode resets the count on the next day', () => {
+  const settings = reminders({ mode: 'goal', dailyGoal: 4, stopWhenGoalReached: true });
+  const plan = S.planReminders({ settings, now: t(6, 15), glassesToday: 4, after: 'drank', count: 2 });
+  assert.equal(plan[0].at, t(7, 9), 'goal met: tomorrow');
+  assert.equal(plan[1].at, t(7, 12), 'tomorrow the 4 glasses are spread over 720 minutes (capped at 180)');
+});

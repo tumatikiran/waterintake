@@ -1,0 +1,136 @@
+/* Android app shell. Shares the design tokens and components of the desktop settings window. */
+html[data-platform='mobile'],
+html[data-platform='mobile'] body,
+html[data-platform='mobile'] #root {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+html[data-platform='mobile'] body { font-size: 15px; }
+
+.m-app { display: flex; flex-direction: column; height: 100%; }
+.m-main { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px 18px; }
+
+/* Bottom tab bar */
+.m-tabs {
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding-bottom: var(--safe-area-inset-bottom, 0px);
+}
+.m-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-height: 58px;
+  padding: 8px 0 7px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 650 11.5px var(--font);
+  cursor: pointer;
+}
+.m-tab svg { width: 24px; height: 24px; fill: currentColor; }
+.m-tab.is-active { color: var(--accent); }
+.m-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 10px; }
+
+/* Today */
+.today-screen { display: flex; flex-direction: column; gap: 12px; min-height: 100%; }
+.m-top .brand-logo { width: 40px; height: 40px; font-size: 22px; }
+.m-top h1 { margin: 0; font-size: 19px; }
+.m-top p { margin: 1px 0 0; font-size: 13px; }
+
+.home-stage {
+  flex: 1 0 auto;
+  height: clamp(320px, 44vh, 410px);
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: radial-gradient(ellipse at 50% 85%, var(--accent-soft), transparent 70%), var(--surface-2);
+  overflow: hidden;
+  cursor: pointer;
+}
+.m-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+.m-summary .today-text p { margin: 0; }
+.m-summary .today-text .muted { font-size: 13px; margin-top: 2px; }
+.m-actions { display: flex; flex-direction: column; gap: 10px; }
+.btn-big { width: 100%; padding: 16px 18px; font-size: 16.5px; border-radius: 14px; }
+.m-actions-row { display: flex; gap: 10px; }
+.m-actions-row .btn { flex: 1; padding: 13px 12px; }
+
+.m-permission {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.m-permission p { margin: 2px 0 0; font-size: 13px; line-height: 1.4; }
+
+/* Pages */
+.m-page-title { margin: 2px 0 14px; font-size: 22px; letter-spacing: -0.01em; }
+
+/* The full-screen reminder scene */
+.m-reminder {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: linear-gradient(180deg, #e6f2ff 0%, #f4f9ff 55%, #ffffff 100%);
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 220ms ease, visibility 0s linear 220ms;
+}
+.m-reminder.is-open { visibility: visible; opacity: 1; transition: opacity 220ms ease; }
+@media (prefers-color-scheme: dark) {
+  .m-reminder { background: linear-gradient(180deg, #16263b 0%, #14171c 70%); }
+}
+
+/* Card centred above the character (reminder scene and Today bubble) */
+.stage.is-mobile .reminder-card {
+  left: 16px;
+  right: 16px;
+  margin: 0 auto;
+  width: auto;
+  max-width: 360px;
+  bottom: var(--card-bottom);
+  transform-origin: 50% 100%;
+}
+.stage.is-mobile .reminder-card::after { right: auto; left: 50%; bottom: -9px; margin-left: -9px; transform: rotate(135deg); }
+.stage.is-mobile .reminder-actions .btn { min-height: 46px; font-size: 15px; }
+.stage.is-mobile.home-stage .reminder-card { top: 12px; bottom: auto; max-width: 300px; padding: 12px 14px; pointer-events: none; }
+.stage.is-mobile.home-stage .reminder-card::after { display: none; }
+.stage.is-mobile.home-stage .reminder-text { margin-right: 0; font-size: 15px; }
+
+/* Settings panels on a phone: one column, bigger touch targets */
+html[data-platform='mobile'] .panel-grid { grid-template-columns: 1fr; gap: 12px; }
+html[data-platform='mobile'] .section { padding: 14px; }
+html[data-platform='mobile'] .row { flex-wrap: wrap; gap: 10px; }
+html[data-platform='mobile'] .row-label { flex: 1 1 180px; }
+html[data-platform='mobile'] .row-control { margin-left: auto; }
+html[data-platform='mobile'] .window { flex-direction: column; align-items: flex-start; }
+html[data-platform='mobile'] .times { flex-wrap: wrap; }
+html[data-platform='mobile'] .text-input { width: 100%; }
+html[data-platform='mobile'] .btn { min-height: 42px; }
+html[data-platform='mobile'] .chip { padding: 8px 12px; }
+html[data-platform='mobile'] .day { width: 36px; height: 36px; }
+html[data-platform='mobile'] .character-layout { grid-template-columns: 1fr; height: auto; min-height: 0; }
+html[data-platform='mobile'] .gallery { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); overflow: visible; }
+html[data-platform='mobile'] .preview-head { flex-direction: column; }
+html[data-platform='mobile'] .preview-actions { justify-content: flex-start; }
+html[data-platform='mobile'] .preview-stage { min-height: 360px; }
+html[data-platform='mobile'] .creator-form { overflow: visible; padding-right: 0; }
+html[data-platform='mobile'] .swatches { max-width: none; justify-content: flex-start; }
+html[data-platform='mobile'] .chip-label { width: 100%; }

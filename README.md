@@ -1,12 +1,14 @@
 # AquaMate 💧
 
-A 3D desktop companion for **Windows and macOS** that reminds you to drink
+A 3D companion for **Windows, macOS and Android** that reminds you to drink
 water. When it's time, a character walks onto your screen carrying a water
 bottle and waves at you. Tell him you drank water and he drinks with you and
 cheers. Pick **Drink Later** and he sighs and trudges sadly across your whole
 screen.
 
-Built with Electron, React, TypeScript, three.js and React Three Fiber.
+Built with Electron (desktop), Capacitor (Android), React, TypeScript, three.js
+and React Three Fiber. Both apps share the same characters, animations,
+reminder rules and screens.
 
 | Reminder | "I Drank Water" | Celebration |
 | --- | --- | --- |
@@ -65,6 +67,31 @@ shows through.</sub>
   the bottle goes into the model's right hand automatically.
 - A gallery with thumbnails, a live preview of every animation and expression
   (drag to turn), edit, delete, and *Use as companion*.
+
+## Android
+
+The Android app has the same companion, animations, expressions, character
+creator and reminder rules:
+
+- Reminders arrive as **notifications with "I drank water" and "Drink later"
+  buttons**, even when the app is closed. Tapping one opens the animated scene.
+- The character lives on a **Today** screen, where he drinks along when you log
+  a glass.
+
+| Today | Reminder | Drink Later | Character |
+| --- | --- | --- | --- |
+| ![Android Today screen](docs/android-today.png) | ![Android reminder](docs/android-reminder.png) | ![Android sad walk](docs/android-sad-walk.png) | ![Android character](docs/android-character.png) |
+
+The quickest way to try it is the APK that GitHub builds on every push: go to
+**Actions → Android APK** and download **AquaMate-debug-apk**. To build it
+yourself (needs Android Studio):
+
+```bash
+npm run android:apk
+```
+
+The full guide is in [docs/ANDROID.md](docs/ANDROID.md): building, installing,
+how notifications and scheduling work, and releasing to Google Play.
 
 ## Quick start
 
@@ -212,7 +239,7 @@ your certificate name, turn `hardenedRuntime` back on and set up notarization.
 npm test
 ```
 
-This builds the app, then runs both kinds of tests:
+This builds both apps, then runs three kinds of tests:
 
 - **Unit tests** (`tests/unit/`) for the scheduling rules:
   - time windows, including overnight and all-day ones
@@ -236,6 +263,10 @@ This builds the app, then runs both kinds of tests:
   - **`.glb` upload:** valid files are added and selected, a fake file is
     refused, and deleting the active character falls back to the default.
   - **No errors:** the renderer logs no errors.
+- **Android UI tests** (`tests/mobile-e2e.mjs`), which run the phone app in a
+  phone-sized window and cover scheduled notifications, notification buttons,
+  the reminder scene, the Today screen, settings, characters and restarts.
+  `npm run test:mobile` runs just these. See [docs/ANDROID.md](docs/ANDROID.md#tests).
 
 On a headless Linux machine or CI, run the tests under a virtual display:
 
@@ -274,7 +305,9 @@ More detail, including the metadata AquaMate's own models carry, is in
 
 ```
 src/
-  shared/      types, settings validation, pure scheduling rules (unit-tested)
+  shared/      shared by desktop and Android: the window.aquamate API contract,
+               types, settings validation, scheduling rules, character-library
+               rules, today's count (unit-tested)
   main/        Electron main process
     main.ts             app lifecycle, IPC (checks which window sent each message), app:// protocol
     window-manager.ts   settings window + transparent overlay, click-through
@@ -292,9 +325,12 @@ src/
     character/          procedural.ts (rig, face, clips), rig.ts, registry.ts,
                         ExpressionController.ts, WaterBottle.ts, assets.ts, snapshot.ts
     settings/           settings window: reminders, characters, creator
+    mobile/             Android: bridge.ts (Capacitor storage + notifications),
+                        MobileApp.tsx (tabs, Today screen, reminder scene)
+android/       the native Android project (Capacitor)
 assets/models/human-character.glb   the default companion (generated)
-scripts/       generate-placeholder-model.mjs, generate-icons.mjs, dev.mjs
-tests/         unit/ and e2e.mjs
+scripts/       generate-placeholder-model.mjs, generate-icons.mjs, dev.mjs, android-apk.mjs
+tests/         unit/, e2e.mjs (desktop), mobile-e2e.mjs + mobile-host.cjs (Android UI)
 ```
 
 - **Reminders run in the main process.** `scheduler.ts` checks the clock every
@@ -345,6 +381,13 @@ macOS and `%APPDATA%` on Windows.
 - The automated tests run on Linux with software WebGL. The Windows (NSIS) and
   macOS (DMG) builds are configured but haven't been built or tested on real
   Windows or macOS machines.
+- The Android UI and logic are tested in a phone-sized window with Capacitor's
+  browser fallbacks. The APK is built by GitHub Actions, but it hasn't been run
+  on a physical phone yet, so check the native parts there: notification
+  buttons, delivery timing and the file picker.
+- On Android, reminders can arrive a few minutes late (Android batches
+  alarms to save battery), and the companion appears inside the app rather
+  than over other apps.
 - **Drink Later** walks across the full screen width, which takes 10–20
   seconds on a wide monitor. The overlay is click-through, so it doesn't get in
   your way.

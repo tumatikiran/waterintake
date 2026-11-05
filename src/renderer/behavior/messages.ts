@@ -1,6 +1,6 @@
 import type { ReminderContext, ResponseResult } from '../../shared/types';
 
-export type MessageKey = 'reminder' | 'cheers' | 'greatJob' | 'later' | 'missed';
+export type MessageKey = 'reminder' | 'cheers' | 'greatJob' | 'later' | 'missed' | 'hello';
 
 export interface CardMessage {
   text: string;
@@ -29,6 +29,8 @@ export function renderMessage(key: MessageKey, { reminder: r, result }: MessageC
       return { text: `Hey${name ? ` ${name}` : ''}! Time to drink some water 💧`, progress };
     case 'cheers':
       return { text: 'Cheers! 💧' };
+    case 'hello':
+      return { text: `Hi${name ? ` ${name}` : ''}! Let's stay hydrated 💧`, progress };
     case 'greatJob':
       return result?.goalReached && done === goal
         ? { text: `Daily goal reached! Amazing 🎉`, detail: `${glasses(done)} today`, progress }

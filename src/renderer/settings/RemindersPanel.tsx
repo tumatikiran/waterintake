@@ -29,7 +29,10 @@ export function RemindersPanel({ state }: { state: AppState }) {
 
   return (
     <div className="panel-grid">
-      <Section title="Reminders" description="AquaMate walks onto your screen when it's time to drink.">
+      <Section
+        title="Reminders"
+        description={state.app.mobile ? "AquaMate sends you a reminder when it's time to drink." : "AquaMate walks onto your screen when it's time to drink."}
+      >
         <ToggleRow label="Remind me to drink water" checked={r.enabled} onChange={(enabled) => remind({ enabled })} />
         <Row label="How often" hint={r.mode === 'goal' ? `About every ${duration(goalInterval)} right now, based on what's left of your goal.` : undefined}>
           <Segmented
@@ -67,32 +70,65 @@ export function RemindersPanel({ state }: { state: AppState }) {
         <ScheduleEditor schedule={r.schedule} />
       </Section>
 
-      <Section title="Smart behaviour">
-        <ToggleRow
-          label="Wait while I'm away"
-          hint="Holds reminders while the computer is idle for 5 minutes or locked, then reminds you when you're back."
-          checked={r.pauseWhenAway}
-          onChange={(pauseWhenAway) => remind({ pauseWhenAway })}
-        />
-        <ToggleRow
-          label="Also show a system notification"
-          hint="Useful when a full-screen app hides the companion."
-          checked={r.systemNotification}
-          onChange={(systemNotification) => remind({ systemNotification })}
-        />
-        <ToggleRow
-          label="Start AquaMate when I log in"
-          hint={state.app.isPackaged ? undefined : 'Available in the installed app.'}
-          disabled={!state.app.isPackaged}
-          checked={state.settings.openAtLogin}
-          onChange={(openAtLogin) => update({ openAtLogin })}
-        />
-      </Section>
+      {state.app.mobile ? (
+        <Section title="Notifications" description="Reminders arrive as Android notifications, even when the app is closed.">
+          <NotificationRow state={state} />
+        </Section>
+      ) : (
+        <Section title="Smart behaviour">
+          <ToggleRow
+            label="Wait while I'm away"
+            hint="Holds reminders while the computer is idle for 5 minutes or locked, then reminds you when you're back."
+            checked={r.pauseWhenAway}
+            onChange={(pauseWhenAway) => remind({ pauseWhenAway })}
+          />
+          <ToggleRow
+            label="Also show a system notification"
+            hint="Useful when a full-screen app hides the companion."
+            checked={r.systemNotification}
+            onChange={(systemNotification) => remind({ systemNotification })}
+          />
+          <ToggleRow
+            label="Start AquaMate when I log in"
+            hint={state.app.isPackaged ? undefined : 'Available in the installed app.'}
+            disabled={!state.app.isPackaged}
+            checked={state.settings.openAtLogin}
+            onChange={(openAtLogin) => update({ openAtLogin })}
+          />
+        </Section>
+      )}
 
       <Section title="About you">
         <NameField value={state.settings.userName} />
       </Section>
     </div>
+  );
+}
+
+/** Android: notification permission status. */
+export function NotificationRow({ state }: { state: AppState }) {
+  const permission = state.app.notifications ?? 'prompt';
+  return (
+    <Row
+      label="Reminder notifications"
+      hint={
+        permission === 'granted'
+          ? 'On. Android may deliver a reminder a few minutes late to save battery.'
+          : permission === 'denied'
+            ? 'Blocked. Turn on notifications for AquaMate in Android Settings → Apps → AquaMate → Notifications.'
+            : 'Allow notifications so AquaMate can remind you when the app is closed.'
+      }
+    >
+      {permission === 'granted' ? (
+        <span className="badge badge-lg">On</span>
+      ) : permission === 'prompt' ? (
+        <button type="button" className="btn btn-primary btn-small" onClick={() => window.aquamate.mobile?.requestNotifications()}>
+          Allow
+        </button>
+      ) : (
+        <span className="badge badge-lg badge-warn">Blocked</span>
+      )}
+    </Row>
   );
 }
 

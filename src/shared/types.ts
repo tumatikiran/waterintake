@@ -86,6 +86,8 @@ export interface ReminderContext {
   character: { id: string; revision: number };
   firstOfDay: boolean;
   hour: number; // local hour, for greetings
+  /** Already answered with a notification button (Android): play that response right after arriving. */
+  answer?: 'drank' | 'later';
 }
 
 /** Returned to the overlay after the user answers. */
@@ -107,7 +109,14 @@ export interface AppState {
   settings: Settings;
   status: StatusSnapshot;
   characters: CharacterInfo[];
-  app: { version: string; platform: string; isPackaged: boolean; dataPath: string };
+  app: {
+    version: string;
+    platform: string; // darwin | win32 | linux | android | web
+    isPackaged: boolean;
+    dataPath: string;
+    mobile: boolean;
+    notifications?: 'granted' | 'denied' | 'prompt'; // Android
+  };
 }
 
 export type ImportResult = { ok: true; character: CharacterInfo } | { ok: false; error: string } | { ok: false; canceled: true };

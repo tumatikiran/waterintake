@@ -1,13 +1,13 @@
 import type { AnimationRole, Expression } from '../character/registry';
-import { INTERACTIONS, type InteractionName, type Mark, type Step } from './interactions';
+import { INTERACTIONS, type Facing, type InteractionName, type Mark, type Step } from './interactions';
 import type { MessageKey } from './messages';
 
 /** What a character on stage can do. Implemented by Mascot.tsx, frame-synced with rendering. */
 export interface Actor {
   readonly key: string; // which character this actor is
-  stage(): void;
+  stage(at?: Mark): void;
   walk(to: Mark, style: 'normal' | 'sad'): Promise<void>;
-  face(to: 'user' | 'left' | 'right' | 'drink'): void;
+  face(to: Facing): void;
   play(animation: AnimationRole): Promise<void>;
   loop(animation: AnimationRole): void;
   expression(name: Expression): void;
@@ -47,7 +47,7 @@ export class Director {
     const a = this.actor;
     switch (step.do) {
       case 'stage':
-        return a.stage();
+        return a.stage(step.at);
       case 'walk':
         return a.walk(step.to, step.style ?? 'normal');
       case 'face':

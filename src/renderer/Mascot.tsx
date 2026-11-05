@@ -14,6 +14,7 @@ const FACE = {
   leftSad: -Math.PI / 2 + 0.85,
   right: Math.PI / 2 - 0.45,
   user: -0.25, // slightly towards the card on the left
+  front: 0,
   drink: 0.05, // nearly face-on: the bottle comes in diagonally from the drinking hand
 };
 const WALK_TIME_SCALE = 0.9;
@@ -31,9 +32,31 @@ interface Motion {
 const STOP_X = -1.15;
 const EXIT_RIGHT_X = 0.9;
 
+/** Where the character stands and where the ground is. */
+export interface StageLayout {
+  /** 'right': near the right edge (desktop overlay); 'center': middle of the screen (Android). */
+  stop: 'right' | 'center';
+  /** Distance of the ground from the bottom of the canvas, in CSS pixels. */
+  groundPx: number;
+  /** Pixels per world unit (the character is 1.85 units tall). */
+  zoom: number;
+}
+export const DESKTOP_STAGE: StageLayout = { stop: 'right', groundPx: 12, zoom: 130 };
+
+/** CSS variables that place the card relative to the character. */
+export function stageStyle(layout: StageLayout): React.CSSProperties {
+  return {
+    '--ground': `${layout.groundPx}px`,
+    '--card-bottom': `${Math.round(layout.groundPx + 2.08 * layout.zoom)}px`, // just above the head
+  } as React.CSSProperties;
+}
+
 interface MascotProps {
   source: CharacterSource;
   onActor: (actor: Actor | null) => void;
+  layout?: StageLayout;
+  /** Global the debug state is written to (tests read it). */
+  debugName?: '__aquamateDebug' | '__aquamateHomeDebug';
 }
 
 /**
@@ -41,8 +64,9 @@ interface MascotProps {
  * the render loop with the frame delta, so walking stays in step with the
  * animation at any frame rate.
  */
-export function Mascot({ source, onActor }: MascotProps) {
+export function Mascot({ source, onActor, layout = DESKTOP_STAGE, debugName = '__aquamateDebug' }: MascotProps) {
   const viewportWidth = useThree((s) => s.viewport.width);
+  const viewportHeight = useThree((s) => s.viewport.height);
   const camera = useThree((s) => s.camera);
   const group = useRef<THREE.Group>(null);
   const shadow = useRef<THREE.Mesh>(null);
@@ -54,13 +78,15 @@ export function Mascot({ source, onActor }: MascotProps) {
   }, []);
   const rig = loaded?.rig ?? null;
 
-  // Stage marks in world units; only the far-left exit depends on the width.
-  const marks = useRef<Record<Mark, number>>({ stop: STOP_X, exitRight: EXIT_RIGHT_X, exitLeft: 0 });
-  marks.current = { stop: STOP_X, exitRight: EXIT_RIGHT_X, exitLeft: -viewportWidth - 0.9 };
+  // Stage marks in world units; only the far-left exit (and a centered stop) depend on the width.
+  const stopX = layout.stop === 'center' ? -viewportWidth / 2 : STOP_X;
+  const marks = useRef<Record<Mark, number>>({ stop: stopX, exitRight: EXIT_RIGHT_X, exitLeft: 0 });
+  marks.current = { stop: stopX, exitRight: EXIT_RIGHT_X, exitLeft: -viewportWidth - 0.9 };
   useEffect(() => {
     camera.position.x = -viewportWidth / 2; // world x = 0 at the right edge
+    camera.position.y = viewportHeight / 2 - layout.groundPx / camera.zoom; // ground at groundPx from the bottom
     camera.updateMatrixWorld();
-  }, [camera, viewportWidth]);
+  }, [camera, viewportWidth, viewportHeight, layout.groundPx]);
 
   const motion = useRef<Motion>({ x: EXIT_RIGHT_X, facing: FACE.left, target: FACE.left, walk: null, waits: [] });
   const key = sourceKey(source);
@@ -71,9 +97,9 @@ export function Mascot({ source, onActor }: MascotProps) {
     const m = motion.current;
     return {
       key: rigKey,
-      stage() {
-        m.x = marks.current.exitRight;
-        m.facing = m.target = FACE.left;
+      stage(at = 'exitRight') {
+        m.x = marks.current[at];
+        m.facing = m.target = at === 'stop' ? FACE.user : FACE.left;
         m.walk?.resolve();
         m.walk = null;
         rig.refill();
@@ -138,7 +164,7 @@ export function Mascot({ source, onActor }: MascotProps) {
     }
     if (shadow.current) shadow.current.position.x = m.x;
 
-    window.__aquamateDebug = {
+    window[debugName] = {
       x: m.x,
       stopX: marks.current.stop,
       exitLeftX: marks.current.exitLeft,

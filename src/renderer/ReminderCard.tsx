@@ -3,6 +3,8 @@ import type { CardMessage } from './behavior/messages';
 
 interface ReminderCardProps {
   ref?: Ref<HTMLDivElement>;
+  /** 'bubble' = a speech bubble without buttons (Android's Today screen). */
+  variant?: 'dialog' | 'bubble';
   message: CardMessage | null;
   actions: boolean;
   onDrank: () => void;
@@ -37,16 +39,16 @@ function Progress({ done, goal }: { done: number; goal: number }) {
   );
 }
 
-export function ReminderCard({ ref, message, actions, onDrank, onLater, onSkip }: ReminderCardProps) {
+export function ReminderCard({ ref, variant = 'dialog', message, actions, onDrank, onLater, onSkip }: ReminderCardProps) {
   const visible = message !== null;
   return (
     <div
       ref={ref}
-      className={`reminder-card${visible ? ' is-visible' : ''}`}
-      role="alertdialog"
+      className={`reminder-card${visible ? ' is-visible' : ''}${variant === 'bubble' ? ' is-bubble' : ''}`}
+      role={variant === 'bubble' ? 'status' : 'alertdialog'}
       aria-live="polite"
       aria-hidden={!visible}
-      data-testid="reminder-card"
+      data-testid={variant === 'bubble' ? 'home-bubble' : 'reminder-card'}
     >
       {message && (
         <>

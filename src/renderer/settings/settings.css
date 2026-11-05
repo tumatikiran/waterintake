@@ -208,6 +208,7 @@ html[data-view='settings'] .muted { color: var(--muted); }
 .gallery-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; font-weight: 700; }
 .badge-lg { padding: 6px 10px; font-size: 12.5px; }
+.badge-warn { background: var(--danger-soft); color: var(--danger); }
 
 .preview-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
 .preview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -246,5 +247,5 @@ html[data-view='settings'] .muted { color: var(--muted); }
 .path { font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--surface-2); border: 1px solid var(--line); word-break: break-all; }
 
 @media (max-width: 900px) {
-  .today-text .muted { display: none; }
+  .app-header .today-text .muted { display: none; }
 }

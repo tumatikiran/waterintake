@@ -112,6 +112,34 @@ export interface NextReminderInput {
   after: ScheduleTrigger;
 }
 
+export interface PlannedReminder {
+  at: number;
+  snoozed: boolean;
+}
+
+/**
+ * The next `count` reminders, assuming no glass is logged in between. Used on
+ * Android, where reminders are scheduled ahead of time as notifications; the
+ * plan is redone whenever something happens (a glass, a snooze, a settings
+ * change). While paused, the plan starts when the pause ends.
+ */
+export function planReminders(input: NextReminderInput & { count: number; pausedUntil?: number | null }): PlannedReminder[] {
+  const paused = input.pausedUntil != null && input.pausedUntil > input.now;
+  let now = paused ? input.pausedUntil! : input.now;
+  let after: ScheduleTrigger = paused ? 'resume' : input.after;
+  const today = startOfDay(input.now);
+  const out: PlannedReminder[] = [];
+  for (let i = 0; i < input.count; i++) {
+    const glassesToday = startOfDay(now) > today ? 0 : input.glassesToday;
+    const at = nextReminderTime({ settings: input.settings, now, glassesToday, after });
+    if (at === null) break;
+    out.push({ at, snoozed: after === 'later' });
+    now = at;
+    after = 'skip';
+  }
+  return out;
+}
+
 /** When the next reminder should fire, or null when reminders are off or nothing is scheduled. */
 export function nextReminderTime({ settings, now, glassesToday, after }: NextReminderInput): number | null {
   if (!settings.enabled) return null;

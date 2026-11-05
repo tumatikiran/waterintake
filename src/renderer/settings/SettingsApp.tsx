@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { AppState } from '../../shared/types';
 import { RemindersPanel } from './RemindersPanel';
 import { CharacterPanel } from './CharacterPanel';
+import { AboutPanel, ProgressRing, scheduleLine, useNow } from './today';
 
 type Tab = 'reminders' | 'character' | 'about';
 const TABS: { id: Tab; label: string }[] = [
@@ -10,48 +11,15 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'about', label: 'About' },
 ];
 
-const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-function when(t: number, now: number): string {
-  const mins = Math.round((t - now) / 60_000);
-  const sameDay = new Date(t).toDateString() === new Date(now).toDateString();
-  if (!sameDay) return `${new Date(t).toLocaleDateString([], { weekday: 'long' })} at ${clock(t)}`;
-  if (mins <= 0) return 'any moment now';
-  if (mins < 60) return `in ${mins} min · ${clock(t)}`;
-  return `at ${clock(t)}`;
-}
-
-/** Re-renders every 30 s so "in 12 min" stays current. */
-function useNow(): number {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
-  return now;
-}
-
 function Today({ state }: { state: AppState }) {
   const now = useNow();
-  const { glassesToday: done, nextReminderAt, pausedUntil, reminderActive } = state.status;
+  const { glassesToday: done, pausedUntil, reminderActive } = state.status;
   const { enabled, dailyGoal: goal } = state.settings.reminders;
-  const pct = Math.min(1, done / goal);
-  const r = 26;
-  const c = 2 * Math.PI * r;
-
-  const schedule = !enabled
-    ? 'Reminders are off'
-    : pausedUntil
-      ? `Paused until ${when(pausedUntil, now).replace(/^at /, '')}`
-      : nextReminderAt
-        ? `Next reminder ${when(nextReminderAt, now)}`
-        : 'No reminder scheduled';
+  const schedule = scheduleLine(state, now);
 
   return (
     <div className="today" data-testid="today">
-      <svg className="ring" viewBox="0 0 64 64" aria-hidden>
-        <circle cx="32" cy="32" r={r} className="ring-track" />
-        <circle cx="32" cy="32" r={r} className="ring-fill" strokeDasharray={c} strokeDashoffset={c * (1 - pct)} />
-      </svg>
+      <ProgressRing done={done} goal={goal} />
       <div className="today-text">
         <p className="today-count">
           <strong data-testid="glasses-today">{done}</strong> of {goal} glasses today
@@ -78,25 +46,6 @@ function Today({ state }: { state: AppState }) {
           Test reminder
         </button>
       </div>
-    </div>
-  );
-}
-
-function About({ state }: { state: AppState }) {
-  return (
-    <div className="about">
-      <section className="section">
-        <h2>AquaMate {state.app.version}</h2>
-        <p>A 3D desktop companion that reminds you to drink water.</p>
-        <ul className="plain-list">
-          <li>Close this window and AquaMate keeps reminding you from the {state.app.platform === 'darwin' ? 'menu bar' : 'system tray'}.</li>
-          <li>
-            Your settings, today's count and custom characters stay on this computer, in <code className="path">{state.app.dataPath}</code>.
-          </li>
-          <li>Upload any rigged .glb character. Animations named Idle, Walk, Wave, Drink, Happy, Sad and SadWalk are used directly; others get stand-ins.</li>
-        </ul>
-        <p className="muted">MIT licensed. Desktop-window techniques adapted from sharada-dev/hydrate-buddy (MIT).</p>
-      </section>
     </div>
   );
 }
@@ -136,7 +85,7 @@ export function SettingsApp() {
       <main className="tab-panel" role="tabpanel">
         {tab === 'reminders' && <RemindersPanel state={state} />}
         {tab === 'character' && <CharacterPanel state={state} />}
-        {tab === 'about' && <About state={state} />}
+        {tab === 'about' && <AboutPanel state={state} />}
       </main>
     </div>
   );

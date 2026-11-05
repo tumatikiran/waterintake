@@ -19,6 +19,21 @@ CharacterStore (.glb files)                                         │
                                           (roles + fallbacks)   (morph channels)     (water level)
 ```
 
+## One UI, two platforms
+
+The React UI only talks to `window.aquamate`, an interface defined in
+`src/shared/api.ts`. Each platform implements it:
+
+| Platform | Implementation | Reminders | Storage |
+| --- | --- | --- | --- |
+| Desktop | `src/main/preload.ts` (IPC to the Electron main process) | A scheduler process that checks the clock | JSON files in the app's data folder |
+| Android | `src/renderer/mobile/bridge.ts` (Capacitor plugins) | The next 8 reminders scheduled as Android notifications | Preferences, plus files in private app storage |
+
+Both use the same rules from `src/shared/`, so anything you add there, such as
+a reminder rule, works on both. Features like animations, expressions and
+interactions live in the shared renderer code and appear on both platforms
+automatically.
+
 ## Add an animation
 
 1. **Name the role** in `src/renderer/character/registry.ts` (`ANIMATION_ROLES`):

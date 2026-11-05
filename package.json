@@ -5,6 +5,7 @@
   "description": "AquaMate: a 3D desktop hydration reminder prototype",
   "license": "MIT",
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "@react-three/fiber": "^9.8.2",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
@@ -30,12 +31,18 @@
     "start": "npm run build && electron .",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.json",
     "generate:model": "node scripts/generate-placeholder-model.mjs",
-    "test": "npm run build && npm run test:unit && node tests/e2e.mjs",
+    "test": "npm run build && npm run build:mobile && npm run test:unit && node tests/e2e.mjs && node tests/mobile-e2e.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "test:unit": "node --test \"tests/unit/*.test.mjs\"",
-    "generate:icons": "node scripts/generate-icons.mjs"
+    "generate:icons": "node scripts/generate-icons.mjs",
+    "build:mobile": "vite build --mode mobile",
+    "android:sync": "npm run build:mobile && cap sync android",
+    "android:open": "npm run android:sync && cap open android",
+    "android:run": "npm run android:sync && cap run android",
+    "android:apk": "npm run android:sync && node scripts/android-apk.mjs",
+    "test:mobile": "npm run build:mobile && node tests/mobile-e2e.mjs"
   },
   "build": {
     "appId": "com.aquamate.prototype",
@@ -50,7 +57,8 @@
       "!dist-renderer/tray/**",
       "!dist-renderer/models/README.md",
       "assets/tray/**",
-      "package.json"
+      "package.json",
+      "!node_modules/**"
     ],
     "asar": true,
     "mac": {
@@ -84,5 +92,14 @@
         "AppImage"
       ]
     }
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/preferences": "^8.0.1"
   }
 }

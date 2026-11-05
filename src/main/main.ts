@@ -130,7 +130,7 @@ function main(): void {
         reminderActive: windows.reminderActive,
       },
       characters: characters.list(),
-      app: { version: app.getVersion(), platform: process.platform, isPackaged: app.isPackaged, dataPath: dataDir },
+      app: { version: app.getVersion(), platform: process.platform, isPackaged: app.isPackaged, dataPath: dataDir, mobile: false },
     };
   }
 

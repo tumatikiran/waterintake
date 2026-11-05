@@ -7,18 +7,19 @@ import type { AnimationRole, Expression } from '../character/registry';
 import type { MessageKey } from './messages';
 
 export type Mark = 'stop' | 'exitLeft' | 'exitRight';
+export type Facing = 'user' | 'front' | 'left' | 'right' | 'drink';
 
 export type Step =
-  | { do: 'stage' } // off-screen right, full bottle, neutral face
+  | { do: 'stage'; at?: Mark } // place the character (default: off-screen right), full bottle, neutral face
   | { do: 'walk'; to: Mark; style?: 'normal' | 'sad' }
-  | { do: 'face'; to: 'user' | 'left' | 'right' | 'drink' }
+  | { do: 'face'; to: Facing }
   | { do: 'play'; animation: AnimationRole } // once, waits until it finishes
   | { do: 'loop'; animation: AnimationRole }
   | { do: 'expression'; name: Expression }
   | { do: 'say'; message: MessageKey | null; actions?: boolean }
   | { do: 'wait'; seconds: number };
 
-export type InteractionName = 'arrive' | 'drank' | 'later' | 'skip' | 'timeout';
+export type InteractionName = 'arrive' | 'drank' | 'later' | 'skip' | 'timeout' | 'homeIdle' | 'homeDrink' | 'homePoke';
 
 export const INTERACTIONS: Record<InteractionName, Step[]> = {
   // Walk in from the right with the bottle, wave, remind.
@@ -69,5 +70,37 @@ export const INTERACTIONS: Record<InteractionName, Step[]> = {
     { do: 'wait', seconds: 2 },
     { do: 'say', message: null },
     { do: 'walk', to: 'exitLeft', style: 'sad' },
+  ],
+
+  // ---- Android Today screen: the character lives on the home screen.
+  homeIdle: [
+    { do: 'stage', at: 'stop' },
+    { do: 'face', to: 'front' },
+    { do: 'expression', name: 'neutral' },
+    { do: 'loop', animation: 'Idle' },
+  ],
+  // "I drank a glass" on the Today screen: he drinks along and cheers.
+  homeDrink: [
+    { do: 'say', message: 'cheers' },
+    { do: 'face', to: 'drink' },
+    { do: 'expression', name: 'drinking' },
+    { do: 'play', animation: 'Drink' },
+    { do: 'face', to: 'front' },
+    { do: 'expression', name: 'joyful' },
+    { do: 'say', message: 'greatJob' },
+    { do: 'play', animation: 'Happy' },
+    { do: 'wait', seconds: 1.4 },
+    { do: 'say', message: null },
+    { do: 'expression', name: 'neutral' },
+    { do: 'loop', animation: 'Idle' },
+  ],
+  // Tapping the character: a friendly wave.
+  homePoke: [
+    { do: 'expression', name: 'happy' },
+    { do: 'say', message: 'hello' },
+    { do: 'play', animation: 'Wave' },
+    { do: 'say', message: null },
+    { do: 'expression', name: 'neutral' },
+    { do: 'loop', animation: 'Idle' },
   ],
 };

@@ -1,7 +1,7 @@
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import type { ReminderContext, ReminderResponse, ResponseResult } from '../shared/types';
-import { Mascot } from './Mascot';
+import { DESKTOP_STAGE, Mascot, stageStyle, type StageLayout } from './Mascot';
 import { ReminderCard } from './ReminderCard';
 import { sourceKey, type CharacterSource } from './character/assets';
 import { Director, type Actor } from './behavior/Director';
@@ -13,8 +13,19 @@ const ANSWER_TIMEOUT_MS = 3 * 60_000;
 
 type Phase = 'hidden' | InteractionName | 'waiting';
 
-/** The transparent always-on-top stage: the character, the card, and the reminder flow. */
-export function Overlay() {
+/** Android: the character stops in the middle, above the gesture area. */
+export const MOBILE_STAGE: StageLayout = { stop: 'center', groundPx: 150, zoom: 150 };
+
+interface OverlayProps {
+  /** desktop: transparent always-on-top strip; mobile: full-screen scene in the Android app. */
+  layout?: 'desktop' | 'mobile';
+  /** Android keeps the scene mounted but stops rendering while it's hidden. */
+  active?: boolean;
+}
+
+/** The reminder stage: the character, the card, and the reminder flow. */
+export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
+  const stageLayout = layout === 'mobile' ? MOBILE_STAGE : DESKTOP_STAGE;
   const [phase, setPhase] = useState<Phase>('hidden');
   const [source, setSource] = useState<CharacterSource>({ kind: 'stored', id: 'default', revision: 1 });
   const [card, setCard] = useState<{ message: CardMessage | null; actions: boolean }>({ message: null, actions: false });
@@ -76,6 +87,8 @@ export function Overlay() {
     window.aquamate.mascotReady();
     setPhase('arrive');
     if (await director.run('arrive')) {
+      // Already answered with a notification button (Android): play that answer now.
+      if (c.answer) return answer(c.answer);
       setPhase('waiting');
       timeout.current = window.setTimeout(() => answer('timeout'), ANSWER_TIMEOUT_MS);
     }
@@ -133,20 +146,27 @@ export function Overlay() {
   useEffect(() => () => window.clearTimeout(timeout.current), []);
 
   return (
-    <div className="stage" data-phase={phase} data-pointer={pointerOverCard ? 'card' : undefined} data-testid="stage">
+    <div
+      className={`stage${layout === 'mobile' ? ' is-mobile' : ''}`}
+      style={stageStyle(stageLayout)}
+      data-phase={phase}
+      data-pointer={pointerOverCard ? 'card' : undefined}
+      data-testid="stage"
+    >
       <SceneBoundary onError={() => setSceneFailed(true)}>
         <Canvas
           className="stage-canvas"
           orthographic
-          camera={{ zoom: 130, position: [0, 1.6, 10], rotation: [0, 0, 0], near: 0.1, far: 50 }}
+          camera={{ zoom: stageLayout.zoom, position: [0, 1.6, 10], rotation: [0, 0, 0], near: 0.1, far: 50 }}
           dpr={[1, 1.75]}
+          frameloop={active ? 'always' : 'never'}
           gl={{ alpha: true, antialias: true, powerPreference: 'low-power', premultipliedAlpha: true }}
         >
           <hemisphereLight args={['#ffffff', '#b8c7dc', 1.6]} />
           <directionalLight position={[2.5, 4, 5]} intensity={2.2} />
           <directionalLight position={[-3, 2, -2]} intensity={0.6} color="#cfe3ff" />
           <Suspense fallback={null}>
-            <Mascot source={source} onActor={setActor} />
+            <Mascot source={source} onActor={setActor} layout={stageLayout} />
           </Suspense>
         </Canvas>
       </SceneBoundary>

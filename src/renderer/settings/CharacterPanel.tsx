@@ -92,7 +92,8 @@ export function CharacterPanel({ state }: { state: AppState }) {
         onSaved={(c) => {
           setMode({ kind: 'view' });
           setFocusId(c.id);
-          setStatus({ kind: 'success', text: `${c.name} is now your companion. Click “Test reminder” to see them.` });
+          const how = state.app.mobile ? 'Tap “Remind me now” on the Today tab' : 'Click “Test reminder”';
+          setStatus({ kind: 'success', text: `${c.name} is now your companion. ${how} to see them.` });
         }}
       />
     );
