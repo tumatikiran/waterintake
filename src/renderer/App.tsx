@@ -34,31 +34,39 @@ function MascotOverlay() {
   }, [phase, loaded, sceneFailed]);
 
 
-  // Click-through everywhere except over the card.
+  // Click-through everywhere except over the card: tell main where the card
+  // is, and main makes just that area clickable while the cursor is over it.
+  const cardVisible = phase === 'reminding' || phase === 'celebrating';
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [pointerOverCard, setPointerOverCard] = useState(false);
+  useEffect(() => window.aquamate.onPointer(setPointerOverCard), []);
   useEffect(() => {
-    let interactive = false;
-    const set = (value: boolean) => {
-      if (value === interactive) return;
-      interactive = value;
-      window.aquamate.setInteractive(value);
-    };
-    const onMove = (e: MouseEvent) => {
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      set(!!el?.closest('[data-interactive]'));
-    };
-    const onLeave = () => set(false);
-    window.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseleave', onLeave);
+    const card = cardRef.current;
+    if (!cardVisible || !card) {
+      window.aquamate.setHitRegion(null);
+      return;
+    }
+    // offset* ignore the pop-in transform, so this is the card's resting box.
+    const report = () =>
+      window.aquamate.setHitRegion({
+        x: card.offsetLeft,
+        y: card.offsetTop,
+        width: card.offsetWidth,
+        height: card.offsetHeight,
+      });
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(card);
+    window.addEventListener('resize', report);
     return () => {
-      window.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseleave', onLeave);
+      observer.disconnect();
+      window.removeEventListener('resize', report);
     };
-  }, []);
+  }, [cardVisible]);
 
   const onArrived = useCallback(() => setPhase('reminding'), []);
   const onLeft = useCallback(() => {
     setPhase('hidden');
-    window.aquamate.setInteractive(false);
     // Let one empty frame paint before hiding so the next show starts clean.
     requestAnimationFrame(() => requestAnimationFrame(() => window.aquamate.mascotDone()));
   }, []);
@@ -86,7 +94,7 @@ function MascotOverlay() {
   }, [sceneFailed, phase, onLeft]);
 
   return (
-    <div className="stage" data-phase={phase} data-testid="stage">
+    <div className="stage" data-phase={phase} data-pointer={pointerOverCard ? 'card' : undefined} data-testid="stage">
       <SceneBoundary onError={() => setSceneFailed(true)}>
         <Canvas
           className="stage-canvas"
@@ -105,7 +113,8 @@ function MascotOverlay() {
         </Canvas>
       </SceneBoundary>
       <ReminderCard
-        visible={phase === 'reminding' || phase === 'celebrating'}
+        ref={cardRef}
+        visible={cardVisible}
         celebrating={phase === 'celebrating'}
         onDrank={onDrank}
         onDismiss={onDismiss}

@@ -16,7 +16,8 @@ Windows and macOS the white area is transparent and your desktop shows through.<
 
 ## Quick start
 
-You need Node.js 20 or newer.
+You need Node.js 22 or newer (20.19+ also works). Step-by-step Mac
+instructions are in [Try it on a Mac](#try-it-on-a-mac).
 
 ```bash
 npm install
@@ -46,6 +47,81 @@ A small **AquaMate** control panel opens. Click **Test Reminder**:
 
 Closing the control panel quits the app.
 
+## Try it on a Mac
+
+### 1. Install the tools (one time)
+
+- **Node.js:** download the **LTS** installer from https://nodejs.org and run it.
+- **Git:** run `git --version` in Terminal. If Git isn't installed, macOS offers
+  to install the Command Line Tools; click **Install**. If you'd rather skip
+  Git, use the ZIP download in step 2.
+
+Check that Node works:
+
+```bash
+node -v
+```
+
+### 2. Get the code
+
+```bash
+git clone https://github.com/tumatikiran/waterintake.git
+```
+
+```bash
+cd waterintake
+```
+
+No Git? Download https://github.com/tumatikiran/waterintake/archive/refs/heads/main.zip,
+double-click it to unzip, then `cd` into the `waterintake-main` folder in Terminal.
+
+### 3. Test it without installing anything
+
+```bash
+npm install
+```
+
+```bash
+npm start
+```
+
+The **AquaMate** control panel opens. Click **Test Reminder** and watch the
+bottom-right corner of your screen, just above the Dock. While you run it this
+way, the menu bar says "Electron"; the installed app from step 4 says
+"AquaMate". Both use Electron's default icon until a custom one is added. Quit
+by closing the control panel or pressing **⌘Q**.
+
+You can also run the automated test. It runs the whole flow twice on your
+screen, which takes under a minute:
+
+```bash
+npm test
+```
+
+### 4. Build and install the app
+
+```bash
+npm run dist:mac
+```
+
+This creates a DMG for your Mac's chip in the `release/` folder:
+
+- `AquaMate-0.1.0-arm64.dmg` on Apple Silicon (M1 and newer)
+- `AquaMate-0.1.0-x64.dmg` on Intel Macs
+
+Open the DMG, drag **AquaMate** into **Applications**, then open it from
+Launchpad or the Applications folder.
+
+The app is ad-hoc signed, not signed with an Apple Developer ID. A DMG you
+build on your own Mac opens normally. If you copy it to another Mac or
+download it, macOS says it can't verify the app. To open it anyway:
+
+1. Try to open AquaMate once and close the warning.
+2. Go to **System Settings → Privacy & Security**.
+3. Scroll down, click **Open Anyway** next to the AquaMate message, and confirm.
+
+To uninstall, quit AquaMate and drag it from **Applications** to the Trash.
+
 ## Building installers
 
 ```bash
@@ -58,19 +134,27 @@ Run this on Windows. It writes an NSIS installer to `release/AquaMate-Setup-0.1.
 npm run dist:mac
 ```
 
-Run this on macOS. It writes `.dmg` files for Intel (x64) and Apple Silicon (arm64) to `release/`.
+Run this on macOS. It writes a `.dmg` for the Mac you're building on to
+`release/`, for example `AquaMate-0.1.0-arm64.dmg`. To build both Intel and
+Apple Silicon DMGs:
+
+```bash
+npm run dist:mac -- --x64 --arm64
+```
 
 Build each installer on its own OS: electron-builder can't make a macOS DMG from
 Windows, and needs extra tools to make a Windows installer from macOS or Linux.
-The builds are **unsigned**:
+Neither installer is signed with a developer certificate:
 
 - On Windows, SmartScreen may say "Windows protected your PC". Click
   **More info → Run anyway**.
-- On macOS, right-click the app and choose **Open** the first time.
+- On macOS, the app is ad-hoc signed (`"identity": "-"` in `package.json`) so it
+  runs on Apple Silicon. A copy downloaded from elsewhere needs
+  **System Settings → Privacy & Security → Open Anyway** the first time.
 
-To sign the builds, set the usual electron-builder `CSC_*` and notarization
-environment variables. To add custom app icons, put `icon.icns` and `icon.ico`
-in a `build/` folder.
+For real distribution, sign with a Developer ID: replace `"identity": "-"` with
+your certificate name, turn `hardenedRuntime` back on and set up notarization.
+To add custom app icons, put `icon.icns` and `icon.ico` in a `build/` folder.
 
 ## Tests
 
@@ -143,12 +227,18 @@ delta. Ground speed is `WALK_STRIDE_SPEED × timeScale` of the Walk clip, so the
 feet match the stride. The delta is capped, so a stalled frame never teleports
 the character. Turning is smoothed with exponential damping.
 
-**Click-through.** On Windows and macOS the overlay ignores mouse events
-(`setIgnoreMouseEvents(true, { forward: true })`) except while the pointer is
-over the card. Your desktop stays usable even when the character is on screen.
+**Click-through.** On Windows and macOS the overlay ignores the mouse
+(`setIgnoreMouseEvents(true)`) except while the cursor is over the card. Your
+desktop stays usable even when the character is on screen. The renderer tells
+the main process where the card is, and the main process checks the cursor
+position every 40 ms while the card is visible. This works even though the
+overlay never takes focus, which mouse-move forwarding doesn't reliably do on
+macOS. On macOS, `acceptFirstMouse` makes the first click press the button
+instead of only focusing the window.
 
 **Always on top.** The overlay uses the `screen-saver` level, is visible on all
-workspaces and over full-screen apps, skips the taskbar and has no shadow.
+workspaces, skips the taskbar and has no shadow. On macOS, AquaMate keeps its
+Dock icon and menu bar (`skipTransformProcessType`).
 
 **Lightweight.**
 - The renderer is a single Vite bundle, with no runtime `node_modules` in the
@@ -190,9 +280,12 @@ backend.
 - The automated test runs on Linux with software WebGL. The Windows (NSIS) and
   macOS (DMG) build settings are included, but the installers haven't been built
   or tested on real Windows or macOS machines yet.
-- On Linux, click-through isn't supported (Electron can't forward mouse moves
-  there), so the overlay area stays clickable while it is visible.
-- The installers are unsigned (see [Building installers](#building-installers)).
+- On macOS, the overlay may not appear on top of apps in full-screen mode. Doing
+  that reliably would mean hiding AquaMate's Dock icon.
+- On Linux, click-through is off, so the whole overlay area stays clickable
+  while it is visible.
+- The installers aren't signed with a developer certificate (see
+  [Building installers](#building-installers)).
 
 ## License and credits
 

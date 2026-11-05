@@ -16,7 +16,11 @@ const api = {
   onReminderStart: (cb: () => void) => subscribe<[]>('reminder:start', cb),
   // mascot -> main
   mascotReady: () => ipcRenderer.send('mascot:ready'),
-  setInteractive: (interactive: boolean) => ipcRenderer.send('mascot:interactive', interactive),
+  /** Where the reminder card is (window-relative CSS px), or null when hidden. */
+  setHitRegion: (region: { x: number; y: number; width: number; height: number } | null) =>
+    ipcRenderer.send('mascot:hit-region', region),
+  /** main -> mascot: whether the cursor is over the card (the overlay is clickable). */
+  onPointer: (cb: (overCard: boolean) => void) => subscribe<[boolean]>('mascot:pointer', cb),
   respond: (kind: 'drank' | 'dismiss') => ipcRenderer.send('reminder:response', kind),
   mascotDone: () => ipcRenderer.send('mascot:done'),
 };

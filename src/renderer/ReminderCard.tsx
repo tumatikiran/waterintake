@@ -1,15 +1,18 @@
+import type { Ref } from 'react';
+
 interface ReminderCardProps {
+  ref?: Ref<HTMLDivElement>;
   visible: boolean;
   celebrating: boolean;
   onDrank: () => void;
   onDismiss: () => void;
 }
 
-export function ReminderCard({ visible, celebrating, onDrank, onDismiss }: ReminderCardProps) {
+export function ReminderCard({ ref, visible, celebrating, onDrank, onDismiss }: ReminderCardProps) {
   return (
     <div
+      ref={ref}
       className={`reminder-card${visible ? ' is-visible' : ''}${celebrating ? ' is-celebrating' : ''}`}
-      data-interactive={visible ? '' : undefined}
       role="alertdialog"
       aria-live="polite"
       aria-hidden={!visible}

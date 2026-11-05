@@ -1,7 +1,7 @@
 import { app, ipcMain, net, protocol } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { WindowManager, type View } from './window-manager';
+import { WindowManager, type HitRegion, type View } from './window-manager';
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIR = path.join(__dirname, '..', 'dist-renderer');
@@ -39,6 +39,15 @@ function urlFor(view: View): string {
   return `${base}${base.includes('?') ? '&' : '?'}view=${view}`;
 }
 
+/** Validates the card box sent by the renderer; anything malformed means "no card". */
+function toHitRegion(value: unknown): HitRegion | null {
+  if (!value || typeof value !== 'object') return null;
+  const { x, y, width, height } = value as Record<string, unknown>;
+  const nums = [x, y, width, height];
+  if (!nums.every((n) => typeof n === 'number' && Number.isFinite(n))) return null;
+  return { x: x as number, y: y as number, width: Math.max(0, width as number), height: Math.max(0, height as number) };
+}
+
 let windows: WindowManager | null = null;
 
 if (!app.requestSingleInstanceLock()) {
@@ -65,7 +74,7 @@ if (!app.requestSingleInstanceLock()) {
 
     ipcMain.on('reminder:test', () => windows?.startReminder());
     ipcMain.on('mascot:ready', () => windows?.showMascot());
-    ipcMain.on('mascot:interactive', (_e, value: unknown) => windows?.setInteractive(value === true));
+    ipcMain.on('mascot:hit-region', (_e, value: unknown) => windows?.setHitRegion(toHitRegion(value)));
     ipcMain.on('mascot:done', () => windows?.hideMascot());
     ipcMain.on('reminder:response', (_e, kind: unknown) => {
       if (kind === 'drank') windows?.setStatus('drank');
