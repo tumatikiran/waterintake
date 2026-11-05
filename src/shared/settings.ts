@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: Settings = {
     dailyGoal: 8,
     stopWhenGoalReached: false,
     snoozeMinutes: 15,
+    laterExit: 'across',
     schedule: [{ days: [...ALL_DAYS], start: '09:00', end: '21:00' }],
     pauseWhenAway: true,
     systemNotification: false,
@@ -56,6 +57,7 @@ function sanitizeReminders(v: unknown): ReminderSettings {
     dailyGoal: int(r.dailyGoal, LIMITS.dailyGoal, d.dailyGoal),
     stopWhenGoalReached: bool(r.stopWhenGoalReached, d.stopWhenGoalReached),
     snoozeMinutes: int(r.snoozeMinutes, LIMITS.snoozeMinutes, d.snoozeMinutes),
+    laterExit: r.laterExit === 'back' || r.laterExit === 'across' ? r.laterExit : d.laterExit,
     // An empty schedule would silently mean "never remind", so fall back to the default.
     schedule: schedule.length ? schedule : d.schedule.map((w) => ({ ...w, days: [...w.days] })),
     pauseWhenAway: bool(r.pauseWhenAway, d.pauseWhenAway),

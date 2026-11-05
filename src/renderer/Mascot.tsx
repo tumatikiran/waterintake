@@ -13,6 +13,7 @@ const FACE = {
   left: -Math.PI / 2 + 0.45,
   leftSad: -Math.PI / 2 + 0.85,
   right: Math.PI / 2 - 0.45,
+  rightSad: Math.PI / 2 - 0.85,
   user: -0.25, // slightly towards the card on the left
   front: 0,
   drink: 0.05, // nearly face-on: the bottle comes in diagonally from the drinking hand
@@ -110,7 +111,8 @@ export function Mascot({ source, onActor, layout = DESKTOP_STAGE, debugName = '_
         const role = style === 'sad' ? 'SadWalk' : 'Walk';
         const timeScale = role === 'SadWalk' && rig.animations.fallbacks.SadWalk ? 0.7 : role === 'Walk' ? WALK_TIME_SCALE : 1;
         rig.animations.loop(role, { fade: 0.3, timeScale });
-        m.target = marks.current[to] < m.x ? (style === 'sad' ? FACE.leftSad : FACE.left) : FACE.right;
+        const sad = style === 'sad';
+        m.target = marks.current[to] < m.x ? (sad ? FACE.leftSad : FACE.left) : sad ? FACE.rightSad : FACE.right;
         m.walk?.resolve();
         return new Promise<void>((resolve) => {
           m.walk = { to, speed: rig.speed(role) * timeScale, resolve };

@@ -62,9 +62,12 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
       } catch {
         result.current = null;
       }
-      setPhase(kind);
+      // "Drink Later" and unanswered reminders: across the screen (default) or back the way he came.
+      const back = (result.current?.laterExit ?? ctx.current?.laterExit) === 'back';
+      const script: InteractionName = back && kind === 'later' ? 'laterBack' : back && kind === 'timeout' ? 'timeoutBack' : kind;
+      setPhase(script);
       if (!director) return finish();
-      if (await director.run(kind)) finish();
+      if (await director.run(script)) finish();
     },
     [director, finish],
   );

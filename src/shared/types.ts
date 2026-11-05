@@ -17,6 +17,9 @@ export interface TimeWindow {
   end: string; // "HH:MM", 24-hour
 }
 
+/** How the companion leaves after "Drink Later" (or an unanswered reminder): across the screen, or back the way he came. */
+export type LaterExit = 'across' | 'back';
+
 /** fixed: every N minutes. goal: spread the remaining daily goal over the remaining active time. */
 export type IntervalMode = 'fixed' | 'goal';
 
@@ -27,6 +30,7 @@ export interface ReminderSettings {
   dailyGoal: number; // glasses per day
   stopWhenGoalReached: boolean;
   snoozeMinutes: number; // "Drink Later"
+  laterExit: LaterExit;
   schedule: TimeWindow[];
   pauseWhenAway: boolean; // hold reminders while the computer is idle or locked
   systemNotification: boolean; // also show an OS notification
@@ -83,6 +87,7 @@ export interface ReminderContext {
   glassesToday: number;
   dailyGoal: number;
   snoozeMinutes: number;
+  laterExit: LaterExit;
   character: { id: string; revision: number };
   firstOfDay: boolean;
   hour: number; // local hour, for greetings
@@ -96,6 +101,7 @@ export interface ResponseResult {
   dailyGoal: number;
   goalReached: boolean;
   snoozeMinutes: number;
+  laterExit: LaterExit;
 }
 
 export interface StatusSnapshot {

@@ -44,6 +44,8 @@ try {
       return notifications.map((n) => ({ id: n.id, at: new Date(n.schedule.at).getTime(), body: n.body, actionTypeId: n.actionTypeId }));
     });
   const card = page.getByTestId('reminder-card');
+  // The closed scene is visibility:hidden, so wait for the state, not for visibility.
+  const sceneClosed = (timeout) => page.waitForSelector('[data-testid=reminder-scene]:not(.is-open)', { state: 'attached', timeout });
   const shot = (name) => page.screenshot({ path: join(OUT, name) });
 
   // A deterministic schedule: active all day.
@@ -104,7 +106,7 @@ try {
   await shot('m4-drinking.png');
   await card.getByText('Great job! Stay hydrated.').waitFor({ timeout: 10000 });
   await card.getByText('2 of 8 glasses today').waitFor();
-  await page.waitForSelector('[data-testid=reminder-scene]:not(.is-open)', { timeout: 20000 });
+  await sceneClosed(20000);
   assert.equal((await state()).status.glassesToday, 2);
 
   step('Drink Later: sad sigh, sad walk off to the left, snooze rescheduled');
@@ -118,7 +120,7 @@ try {
   await sleep(900);
   await shot('m5-sad-walk.png');
   await page.waitForFunction(() => window.__aquamateDebug.x <= window.__aquamateDebug.exitLeftX + 1e-6, null, { timeout: 30000 });
-  await page.waitForSelector('[data-testid=reminder-scene]:not(.is-open)', { timeout: 10000 });
+  await sceneClosed(10000);
   plan = await pending();
   assert.ok(plan[0].at - later >= 14 * 60_000 && plan[0].at - later <= 16 * 60_000, 'snoozed for 15 minutes');
   assert.equal(plan[0].body, 'Ready now? Time to drink some water 💧');
@@ -133,7 +135,7 @@ try {
   );
   await page.waitForSelector('[data-testid=reminder-scene].is-open');
   await sceneAnim('Drink', 20000);
-  await page.waitForSelector('[data-testid=reminder-scene]:not(.is-open)', { timeout: 25000 });
+  await sceneClosed(25000);
   assert.equal((await state()).status.glassesToday, 3);
 
   step('reminder settings save to app storage and re-plan the notifications');
@@ -154,6 +156,21 @@ try {
   assert.equal(await page.getByText("Wait while I'm away").count(), 0, 'desktop-only options are hidden');
   await page.evaluate(() => document.querySelector('.m-main').scrollTo(0, 0));
   await shot('m6-reminders.png');
+
+  step('"How he leaves: Back the way he came" sends him back sadly the way he came');
+  await page.getByRole('radio', { name: 'Back the way he came' }).click();
+  await sleep(200);
+  assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('CapacitorStorage.settings')))).reminders.laterExit, 'back');
+  await page.getByRole('tab', { name: 'Today' }).click();
+  await page.getByRole('button', { name: 'Remind me now' }).click();
+  await scene('waiting');
+  await card.getByRole('button', { name: 'Drink Later' }).click();
+  await scene('laterBack');
+  await sceneAnim('SadWalk', 10000);
+  const back0 = await page.evaluate(() => window.__aquamateDebug.x);
+  await page.waitForFunction((x0) => window.__aquamateDebug.x > x0 + 0.3, back0, { timeout: 10000 });
+  assert.equal(await page.evaluate(() => window.__aquamateDebug.expression), 'sad');
+  await sceneClosed(20000);
 
   step('character creator works on the phone and the new character moves in');
   await page.getByRole('tab', { name: 'Character' }).click();
@@ -198,7 +215,7 @@ try {
   await scene('waiting', 30000);
   await card.getByText('Hey Sam! Time to drink some water 💧').waitFor();
   await card.getByRole('button', { name: 'Skip this reminder' }).click();
-  await page.waitForSelector('[data-testid=reminder-scene]:not(.is-open)', { timeout: 20000 });
+  await sceneClosed(20000);
 
   step('settings and the glass count survive a restart');
   await page.reload();

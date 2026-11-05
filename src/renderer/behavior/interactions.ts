@@ -19,7 +19,17 @@ export type Step =
   | { do: 'say'; message: MessageKey | null; actions?: boolean }
   | { do: 'wait'; seconds: number };
 
-export type InteractionName = 'arrive' | 'drank' | 'later' | 'skip' | 'timeout' | 'homeIdle' | 'homeDrink' | 'homePoke';
+export type InteractionName =
+  | 'arrive'
+  | 'drank'
+  | 'later'
+  | 'laterBack'
+  | 'skip'
+  | 'timeout'
+  | 'timeoutBack'
+  | 'homeIdle'
+  | 'homeDrink'
+  | 'homePoke';
 
 export const INTERACTIONS: Record<InteractionName, Step[]> = {
   // Walk in from the right with the bottle, wave, remind.
@@ -57,6 +67,15 @@ export const INTERACTIONS: Record<InteractionName, Step[]> = {
     { do: 'say', message: null },
     { do: 'walk', to: 'exitLeft', style: 'sad' },
   ],
+  // Same, but he turns around and trudges back the way he came
+  // (Settings → "How he leaves: Back the way he came").
+  laterBack: [
+    { do: 'say', message: 'later' },
+    { do: 'expression', name: 'sad' },
+    { do: 'play', animation: 'Sad' },
+    { do: 'say', message: null },
+    { do: 'walk', to: 'exitRight', style: 'sad' },
+  ],
   // ✕: no fuss, just leave.
   skip: [
     { do: 'say', message: null },
@@ -70,6 +89,13 @@ export const INTERACTIONS: Record<InteractionName, Step[]> = {
     { do: 'wait', seconds: 2 },
     { do: 'say', message: null },
     { do: 'walk', to: 'exitLeft', style: 'sad' },
+  ],
+  timeoutBack: [
+    { do: 'say', message: 'missed' },
+    { do: 'expression', name: 'sad' },
+    { do: 'wait', seconds: 2 },
+    { do: 'say', message: null },
+    { do: 'walk', to: 'exitRight', style: 'sad' },
   ],
 
   // ---- Android Today screen: the character lives on the home screen.

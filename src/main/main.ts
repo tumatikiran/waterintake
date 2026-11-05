@@ -155,6 +155,7 @@ function main(): void {
       glassesToday: log.glassesToday(),
       dailyGoal: settings.reminders.dailyGoal,
       snoozeMinutes: settings.reminders.snoozeMinutes,
+      laterExit: settings.reminders.laterExit,
       character: { id: character.id, revision: character.revision },
       firstOfDay: log.remindersToday() === 0,
       hour: new Date().getHours(),
@@ -270,8 +271,8 @@ function main(): void {
     if (!fromMascot(e) || !RESPONSES.includes(kind as ReminderResponse)) throw new Error('Not allowed');
     const glassesToday = kind === 'drank' ? log.addGlass() : log.glassesToday();
     scheduler.reschedule(kind === 'drank' ? 'drank' : kind === 'skip' ? 'skip' : 'later');
-    const { dailyGoal, snoozeMinutes } = settings.reminders;
-    return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes };
+    const { dailyGoal, snoozeMinutes, laterExit } = settings.reminders;
+    return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes, laterExit };
   });
 
   // ------------------------------------------------------------- lifecycle

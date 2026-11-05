@@ -15,9 +15,9 @@ export function Section({ title, description, children, aside }: { title: string
   );
 }
 
-export function Row({ label, hint, children, htmlFor }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }) {
+export function Row({ label, hint, children, htmlFor, stacked }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string; stacked?: boolean }) {
   return (
-    <div className="row">
+    <div className={`row${stacked ? ' is-stacked' : ''}`}>
       <div className="row-label">
         <label htmlFor={htmlFor}>{label}</label>
         {hint && <p className="hint">{hint}</p>}

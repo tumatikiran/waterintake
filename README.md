@@ -4,7 +4,7 @@ A 3D companion for **Windows, macOS and Android** that reminds you to drink
 water. When it's time, a character walks onto your screen carrying a water
 bottle and waves at you. Tell him you drank water and he drinks with you and
 cheers. Pick **Drink Later** and he sighs and trudges sadly across your whole
-screen.
+screen, or back the way he came if you prefer.
 
 Built with Electron (desktop), Capacitor (Android), React, TypeScript, three.js
 and React Three Fiber. Both apps share the same characters, animations,
@@ -32,8 +32,9 @@ shows through.</sub>
 
 - He carries a water bottle. **I Drank Water** makes him lift it to his mouth
   and drink, eyes closed, as the water level drops. Then he cheers.
-- **Drink Later** makes him sigh, shake his head and walk slowly across the
-  whole screen with a sad face.
+- **Drink Later** makes him sigh, shake his head and walk slowly away with a
+  sad face. You choose how he leaves: **across the whole screen** (the
+  default) or **back the way he came**.
 - His face has happy, sad and "joyful" expressions, and he blinks naturally.
 - The reminder card speaks to you by name, greets you in the morning, says
   "Ready now?" after a snooze, and shows today's glasses as water drops.
@@ -47,7 +48,8 @@ shows through.</sub>
 - A **daily goal**, with an option to stop reminding once you reach it.
 - **Active hours**: one or more time windows, each with its own days. Windows
   can run past midnight, for example 22:00–06:00 for night shifts.
-- **Drink Later** snooze length.
+- **Drink Later**: the snooze length, and how he leaves (across the screen or
+  back the way he came). The same choice applies when nobody answers.
 - **Wait while I'm away**: no reminders while the computer is idle or locked.
   When you come back you get one reminder, not a backlog. Works after sleep and
   wake too.
@@ -255,7 +257,9 @@ This builds both apps, then runs three kinds of tests:
   - **I Drank Water:** he drinks with his eyes closed, the bottle's water
     level drops, he celebrates, the glass is counted, and he walks out.
   - **Drink Later:** he sighs with a sad face, walks across the whole screen
-    to the left, and the next reminder is set about 15 minutes later.
+    to the left, and the next reminder is set about 15 minutes later. With
+    **How he leaves: Back the way he came**, he walks back to the right
+    instead, still sad.
   - **× (skip):** he leaves without counting a glass.
   - **Settings:** changes save to `settings.json` straight away.
   - **Character creator:** saves a character with a thumbnail, and that
@@ -341,8 +345,8 @@ tests/         unit/, e2e.mjs (desktop), mobile-e2e.mjs + mobile-host.cjs (Andro
   character walks inside it. The card is the only clickable area: the main
   process checks the cursor against the card, which works even though the
   overlay never takes focus.
-- **Behaviour is data.** Each interaction (`arrive`, `drank`, `later`, `skip`,
-  `timeout`) is a list of steps such as walk, face, play, loop, expression, say
+- **Behaviour is data.** Each interaction (`arrive`, `drank`, `later` and
+  `laterBack`, `skip`, `timeout` and `timeoutBack`) is a list of steps such as walk, face, play, loop, expression, say
   and wait. `Director` runs the steps, and `Mascot` carries them out in time
   with rendering. Walking speed matches each walk animation's stride, so the
   feet don't slide.
@@ -388,9 +392,10 @@ macOS and `%APPDATA%` on Windows.
 - On Android, reminders can arrive a few minutes late (Android batches
   alarms to save battery), and the companion appears inside the app rather
   than over other apps.
-- **Drink Later** walks across the full screen width, which takes 10–20
-  seconds on a wide monitor. The overlay is click-through, so it doesn't get in
-  your way.
+- By default, **Drink Later** walks across the full screen width, which takes
+  10–20 seconds on a wide monitor. The overlay is click-through, so it doesn't
+  get in your way. For a short exit, set **How he leaves** to **Back the way he
+  came**.
 - For uploaded models, the bottle is placed by a best guess at the right hand,
   and only models with their own `Drink` clip lift it to the mouth.
 - On macOS, the overlay may not appear on top of apps in full-screen mode; turn

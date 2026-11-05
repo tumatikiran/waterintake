@@ -293,6 +293,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       glassesToday: today.glasses,
       dailyGoal: settings.reminders.dailyGoal,
       snoozeMinutes: settings.reminders.snoozeMinutes,
+      laterExit: settings.reminders.laterExit,
       character: { id: character.id, revision: character.revision },
       firstOfDay: today.reminders === 0,
       hour: new Date().getHours(),
@@ -447,8 +448,8 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       await reschedule(kind === 'drank' ? 'drank' : kind === 'skip' ? 'skip' : 'later');
       void LocalNotifications.removeAllDeliveredNotifications().catch(() => {});
       const glassesToday = dayOf(daily).glasses;
-      const { dailyGoal, snoozeMinutes } = settings.reminders;
-      return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes };
+      const { dailyGoal, snoozeMinutes, laterExit } = settings.reminders;
+      return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes, laterExit };
     },
     mascotDone() {
       reminderActive = false;

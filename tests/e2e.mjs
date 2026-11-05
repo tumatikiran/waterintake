@@ -185,6 +185,24 @@ try {
   await settings.evaluate(() => document.querySelector('.tab-panel').scrollTo(0, 0));
   await settings.screenshot({ path: join(OUT, '5-settings-reminders.png') });
 
+  step('"How he leaves: Back the way he came": after Drink Later he walks back sadly the way he came');
+  await settings.getByRole('radio', { name: 'Back the way he came' }).click();
+  await sleep(200);
+  assert.equal(JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders.laterExit, 'back');
+  await testReminder();
+  await phase('waiting');
+  await card.getByRole('button', { name: 'Drink Later' }).click();
+  await card.getByText("Okay… I'll remind you again in 15 minutes.").waitFor();
+  await phase('laterBack');
+  await waitAnim('SadWalk', 8000);
+  const back0 = await debug();
+  await waitDebug((x0) => window.__aquamateDebug.x > x0 + 0.3, back0.x, 10000); // to the right, where he came from
+  assert.equal((await debug()).expression, 'sad');
+  await shot('4b-sad-walk-back.png');
+  await waitDebug(() => window.__aquamateDebug.x >= window.__aquamateDebug.exitRightX - 1e-6, null, 15000);
+  await phase('hidden', 5000);
+  assert.equal((await waitVisible(false)).visible, false);
+
   // ----------------------------------------------------- Custom characters
   step('character creator: design, save, and it becomes the companion');
   await settings.getByRole('tab', { name: 'Character' }).click();

@@ -44,3 +44,10 @@ test('mergeSettings applies a partial update', () => {
   assert.equal(merged.reminders.intervalMinutes, DEFAULT_SETTINGS.reminders.intervalMinutes);
   assert.equal(merged.userName, 'Sam');
 });
+
+test('"How he leaves" after Drink Later: across the screen by default, or back the way he came', () => {
+  assert.equal(DEFAULT_SETTINGS.reminders.laterExit, 'across');
+  assert.equal(sanitizeSettings({ reminders: { laterExit: 'back' } }).reminders.laterExit, 'back');
+  assert.equal(sanitizeSettings({ reminders: { laterExit: 'sideways' } }).reminders.laterExit, 'across');
+  assert.equal(sanitizeSettings({ reminders: {} }).reminders.laterExit, 'across', 'older settings files get the default');
+});

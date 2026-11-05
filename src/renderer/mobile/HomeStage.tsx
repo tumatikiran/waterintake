@@ -13,7 +13,7 @@ const noop = () => {};
 
 function homeContext(state: AppState): MessageContext {
   const done = state.status.glassesToday;
-  const { dailyGoal, snoozeMinutes } = state.settings.reminders;
+  const { dailyGoal, snoozeMinutes, laterExit } = state.settings.reminders;
   return {
     reminder: {
       reason: 'manual',
@@ -21,11 +21,12 @@ function homeContext(state: AppState): MessageContext {
       glassesToday: done,
       dailyGoal,
       snoozeMinutes,
+      laterExit,
       character: { id: state.settings.characterId, revision: 1 },
       firstOfDay: false,
       hour: new Date().getHours(),
     },
-    result: { glassesToday: done, dailyGoal, goalReached: done >= dailyGoal, snoozeMinutes },
+    result: { glassesToday: done, dailyGoal, goalReached: done >= dailyGoal, snoozeMinutes, laterExit },
   };
 }
 

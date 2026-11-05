@@ -53,6 +53,17 @@ export function RemindersPanel({ state }: { state: AppState }) {
         <Row label="When I pick “Drink Later”" htmlFor="snooze" hint="The companion leaves (sadly) and comes back after this long.">
           <Select id="snooze" label="Snooze" value={r.snoozeMinutes} options={SNOOZES} onChange={(snoozeMinutes) => remind({ snoozeMinutes })} />
         </Row>
+        <Row stacked label="How he leaves" hint="After “Drink Later”, or when a reminder goes unanswered, he walks off with a sad face.">
+          <Segmented
+            label="How he leaves"
+            value={r.laterExit}
+            onChange={(laterExit) => remind({ laterExit })}
+            options={[
+              { value: 'across', label: 'Across the screen' },
+              { value: 'back', label: 'Back the way he came' },
+            ]}
+          />
+        </Row>
       </Section>
 
       <Section title="Daily goal" description="Each “I Drank Water” counts as one glass.">
