@@ -1,20 +1,20 @@
 :root {
+  --blue-700: #1859b3;
   --blue-600: #1f6fd6;
   --blue-500: #2f80ed;
   --blue-100: #e3efff;
   --ink: #13233a;
   --ink-soft: #52627a;
   --card: #ffffff;
-  --panel-bg: #f4f8fd;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
-body { font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; user-select: none; }
+body { font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
 
 /* ---------------------------------------------------------- mascot overlay */
-html[data-view='mascot'], html[data-view='mascot'] body { background: transparent; overflow: hidden; }
+html[data-view='mascot'], html[data-view='mascot'] body { background: transparent; overflow: hidden; user-select: none; }
 
 .stage { position: relative; width: 100%; height: 100%; }
 .stage-canvas { position: absolute !important; inset: 0; }
@@ -23,10 +23,11 @@ html[data-view='mascot'], html[data-view='mascot'] body { background: transparen
   position: absolute;
   right: 222px;
   bottom: 236px;
-  width: 280px;
-  padding: 16px 18px 16px;
+  width: 300px;
+  padding: 16px 18px;
   border-radius: 18px;
   background: var(--card);
+  color: var(--ink);
   box-shadow: 0 10px 30px rgba(19, 35, 58, 0.18), 0 2px 6px rgba(19, 35, 58, 0.1);
   border: 1px solid rgba(47, 128, 237, 0.18);
   opacity: 0;
@@ -55,20 +56,35 @@ html[data-view='mascot'], html[data-view='mascot'] body { background: transparen
   pointer-events: auto;
   animation: card-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.reminder-card.is-visible.is-celebrating { animation: card-bounce 600ms ease; }
 
-.reminder-text { margin: 0 0 14px; font-size: 16px; font-weight: 600; line-height: 1.35; }
-.reminder-text.celebrate { margin: 2px 0; color: var(--blue-600); text-align: center; animation: text-in 300ms ease; }
-.reminder-actions { display: flex; gap: 8px; }
+.reminder-text { margin: 0 22px 0 0; font-size: 16px; font-weight: 650; line-height: 1.35; animation: text-in 260ms ease; }
+.reminder-detail { margin: 6px 0 0; font-size: 13px; color: var(--ink-soft); }
+.reminder-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+.card-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: 400 20px/1 var(--font);
+  cursor: pointer;
+}
+.card-close:hover { background: var(--blue-100); color: var(--blue-700); }
+.card-close:focus-visible { outline: 3px solid rgba(47, 128, 237, 0.45); }
+
+.card-progress { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.card-progress-text { margin: 8px 0 0; font-size: 13px; color: var(--ink-soft); }
+.drop { width: 12px; height: 16px; fill: #d6e6fa; transition: fill 200ms ease; }
+.drop.is-filled { fill: var(--blue-500); }
 
 @keyframes card-pop {
   from { opacity: 0; transform: translateY(12px) scale(0.85); }
   to { opacity: 1; transform: none; }
-}
-@keyframes card-bounce {
-  0%, 100% { transform: none; }
-  35% { transform: translateY(-8px) scale(1.03); }
-  65% { transform: translateY(2px); }
 }
 @keyframes text-in {
   from { opacity: 0; transform: translateY(4px); }
@@ -83,26 +99,18 @@ html[data-view='mascot'], html[data-view='mascot'] body { background: transparen
   padding: 9px 14px;
   font: 600 14px/1 var(--font);
   cursor: pointer;
+  white-space: nowrap;
   transition: background-color 120ms ease, transform 80ms ease, box-shadow 120ms ease;
 }
 .btn:active:not(:disabled) { transform: scale(0.97); }
 .btn:focus-visible { outline: 3px solid rgba(47, 128, 237, 0.45); outline-offset: 2px; }
 .btn:disabled { cursor: default; opacity: 0.55; }
-.btn-primary { flex: 1; background: var(--blue-500); color: #fff; box-shadow: 0 2px 0 var(--blue-600); }
+.btn-primary { background: var(--blue-500); color: #fff; box-shadow: 0 2px 0 var(--blue-600); }
 .btn-primary:hover:not(:disabled) { background: var(--blue-600); }
-.btn-ghost { background: var(--blue-100); color: var(--blue-600); }
+.btn-ghost { background: var(--blue-100); color: var(--blue-700); }
 .btn-ghost:hover:not(:disabled) { background: #d2e5ff; }
-.btn-wide { flex: none; width: 100%; padding: 12px 16px; font-size: 15px; }
-
-/* ---------------------------------------------------------- control panel */
-html[data-view='panel'] body { background: var(--panel-bg); }
-.panel { display: flex; flex-direction: column; gap: 16px; padding: 20px; height: 100%; }
-.panel-header { display: flex; align-items: center; gap: 12px; }
-.panel-logo { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--blue-100); font-size: 24px; }
-.panel h1 { margin: 0; font-size: 18px; }
-.panel-sub { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-soft); }
-.panel-status { margin: 0; font-size: 13px; color: var(--ink-soft); text-align: center; min-height: 1.3em; }
+.reminder-actions .btn-primary { flex: 1; }
 
 @media (prefers-reduced-motion: reduce) {
-  .reminder-card, .reminder-card.is-visible, .reminder-text.celebrate { animation: none; transition: opacity 120ms linear; }
+  .reminder-card, .reminder-card.is-visible, .reminder-text { animation: none; transition: opacity 120ms linear; }
 }

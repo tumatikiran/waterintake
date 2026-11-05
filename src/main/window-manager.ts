@@ -1,36 +1,27 @@
-import { BrowserWindow, screen } from 'electron';
+import { BrowserWindow, nativeTheme, screen } from 'electron';
+import type { HitRegion, ReminderContext } from '../shared/types';
 
 /**
- * Owns the two windows of the prototype:
- *  - the control panel (a small, normal window with the "Test Reminder" button)
+ * Owns the two windows:
+ *  - the settings window (today's progress, reminder options, characters)
  *  - the mascot overlay (frameless, transparent, always-on-top, click-through)
  *
- * Window flags and the bottom-right positioning are adapted from
+ * Overlay flags and bottom-of-screen positioning are adapted from
  * hydrate-buddy (MIT, (c) 2026 sharada-dev); see THIRD_PARTY_NOTICES.md.
  */
 
-// The mascot window is a fixed "stage" in the bottom-right corner of the work
-// area. The window itself never moves while visible: the character walks
-// inside it, which keeps motion smooth and avoids the jitter/flicker that
-// per-frame setBounds() calls cause on Windows and macOS.
-export const MASCOT_WIDTH = 720;
+// The overlay is a fixed strip along the bottom of the work area, as wide as
+// the screen, so the character can walk all the way across it. The window
+// never moves while visible; the character walks inside it, which keeps
+// motion smooth and avoids the flicker of per-frame setBounds() calls.
 export const MASCOT_HEIGHT = 440;
 
-export type View = 'panel' | 'mascot';
-export type Status = 'idle' | 'active' | 'drank' | 'dismissed';
-
-/** The reminder card's box inside the overlay, in window-relative CSS pixels. */
-export interface HitRegion {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+export type View = 'settings' | 'mascot';
 
 export interface WindowManagerOptions {
   preload: string;
   urlFor: (view: View) => string;
-  onPanelClosed: () => void;
+  onSettingsReady: () => void;
 }
 
 // Click-through is applied on Windows and macOS. Linux (especially Wayland)
@@ -41,53 +32,71 @@ const POINTER_POLL_MS = 40;
 const HIT_PADDING = 8;
 
 export class WindowManager {
-  panel: BrowserWindow | null = null;
+  settings: BrowserWindow | null = null;
   mascot: BrowserWindow | null = null;
-  private reminderActive = false;
-  private status: Status = 'idle';
+  quitting = false;
+  private active = false;
   private hitRegion: HitRegion | null = null;
   private pointerTimer: ReturnType<typeof setInterval> | null = null;
   private interactive = false;
 
-  constructor(private readonly opts: WindowManagerOptions) {}
-
-  createWindows(): void {
-    this.mascot = this.createMascot();
-    this.panel = this.createPanel();
+  constructor(private readonly opts: WindowManagerOptions) {
     screen.on('display-metrics-changed', () => this.positionMascot());
     screen.on('display-removed', () => this.positionMascot());
   }
 
-  // ------------------------------------------------------------ control panel
-  private createPanel(): BrowserWindow {
-    const win = new BrowserWindow({
-      width: 320,
-      height: 240,
-      title: 'AquaMate',
-      show: false,
-      resizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      autoHideMenuBar: true,
-      backgroundColor: '#f4f8fd',
-      webPreferences: this.webPreferences(),
-    });
-    win.setMenuBarVisibility(false);
-    this.harden(win);
-    win.loadURL(this.opts.urlFor('panel'));
-    win.once('ready-to-show', () => win.show());
-    win.webContents.on('did-finish-load', () => this.sendStatus());
-    win.on('closed', () => {
-      this.panel = null;
-      this.opts.onPanelClosed();
-    });
-    return win;
+  get reminderActive(): boolean {
+    return this.active;
   }
 
-  // ----------------------------------------------------------- mascot overlay
-  private createMascot(): BrowserWindow {
+  // ---------------------------------------------------------------- settings
+  showSettings(): void {
+    if (this.settings && !this.settings.isDestroyed()) {
+      if (this.settings.isMinimized()) this.settings.restore();
+      this.settings.show();
+      this.settings.focus();
+      return;
+    }
     const win = new BrowserWindow({
-      width: MASCOT_WIDTH,
+      width: 960,
+      height: 680,
+      minWidth: 860,
+      minHeight: 600,
+      title: 'AquaMate',
+      show: false,
+      autoHideMenuBar: true,
+      backgroundColor: nativeTheme.shouldUseDarkColors ? '#14171c' : '#f3f6fa',
+      webPreferences: this.webPreferences(),
+    });
+    this.settings = win;
+    this.harden(win);
+    win.loadURL(this.opts.urlFor('settings'));
+    win.once('ready-to-show', () => {
+      win.show();
+      win.focus();
+    });
+    win.webContents.on('did-finish-load', () => this.opts.onSettingsReady());
+    // Closing hides the window: AquaMate keeps reminding from the tray.
+    win.on('close', (e) => {
+      if (!this.quitting) {
+        e.preventDefault();
+        win.hide();
+      }
+    });
+    win.on('closed', () => {
+      this.settings = null;
+    });
+  }
+
+  sendToSettings(channel: string, payload: unknown): void {
+    const win = this.settings;
+    if (win && !win.isDestroyed() && !win.webContents.isLoading()) win.webContents.send(channel, payload);
+  }
+
+  // ----------------------------------------------------------------- overlay
+  createMascot(): void {
+    const win = new BrowserWindow({
+      width: 800,
       height: MASCOT_HEIGHT,
       show: false,
       frame: false,
@@ -113,38 +122,34 @@ export class WindowManager {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     if (supportsClickThrough) win.setIgnoreMouseEvents(true);
     this.harden(win);
+    this.mascot = win;
+    this.positionMascot(); // full width from the start, so the first layout is already right
     win.loadURL(this.opts.urlFor('mascot'));
-    return win;
   }
 
-  /** Bottom-right corner of the display the user is working on. */
+  /** The bottom strip of the display the user is working on. */
   positionMascot(): void {
     const win = this.mascot;
     if (!win || win.isDestroyed()) return;
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     const { x, y, width, height } = display.workArea;
-    win.setBounds({
-      x: Math.round(x + width - MASCOT_WIDTH),
-      y: Math.round(y + height - MASCOT_HEIGHT),
-      width: MASCOT_WIDTH,
-      height: MASCOT_HEIGHT,
-    });
+    win.setBounds({ x, y: y + height - MASCOT_HEIGHT, width, height: MASCOT_HEIGHT });
   }
 
-  /** Step 1: place the (still hidden) overlay and let the renderer reset its scene. */
-  startReminder(): void {
+  /** Step 1: place the (still hidden) overlay and let the renderer stage the character off-screen. */
+  startReminder(ctx: ReminderContext): boolean {
     const win = this.mascot;
-    if (!win || win.isDestroyed() || this.reminderActive) return;
-    this.reminderActive = true;
-    this.setStatus('active');
+    if (!win || win.isDestroyed() || this.active) return false;
+    this.active = true;
     this.positionMascot();
-    win.webContents.send('reminder:start');
+    win.webContents.send('reminder:start', ctx);
+    return true;
   }
 
-  /** Step 2: the renderer has the character staged off-screen, so showing cannot flash old frames. */
+  /** Step 2: the renderer is staged, so showing cannot flash stale frames. */
   showMascot(): void {
     const win = this.mascot;
-    if (!win || win.isDestroyed() || !this.reminderActive) return;
+    if (!win || win.isDestroyed() || !this.active) return;
     win.showInactive(); // never steal keyboard focus from the user's work
     win.setAlwaysOnTop(true, 'screen-saver'); // re-assert after show (macOS)
     win.moveTop();
@@ -156,8 +161,7 @@ export class WindowManager {
     if (!win || win.isDestroyed()) return;
     this.setHitRegion(null);
     win.hide();
-    this.reminderActive = false;
-    if (this.status === 'active') this.setStatus('idle');
+    this.active = false;
   }
 
   /**
@@ -202,13 +206,9 @@ export class WindowManager {
     win.webContents.send('mascot:pointer', interactive);
   }
 
-  setStatus(status: Status): void {
-    this.status = status;
-    this.sendStatus();
-  }
-
-  private sendStatus(): void {
-    if (this.panel && !this.panel.isDestroyed()) this.panel.webContents.send('status', this.status);
+  isFrom(e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent, view: View): boolean {
+    const win = view === 'settings' ? this.settings : this.mascot;
+    return !!win && !win.isDestroyed() && e.sender === win.webContents;
   }
 
   private webPreferences(): Electron.WebPreferences {

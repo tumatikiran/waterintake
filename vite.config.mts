@@ -11,7 +11,7 @@ export default defineConfig({
     outDir: resolve(import.meta.dirname, 'dist-renderer'),
     emptyOutDir: true,
     target: 'chrome120',
-    chunkSizeWarningLimit: 1200,
+    chunkSizeWarningLimit: 2500, // a desktop app loads its bundle from disk
   },
   server: { port: 5173, strictPort: false },
 });

@@ -8,12 +8,15 @@ AquaMate adapts a few desktop-window techniques from
 - the transparent overlay window options (frameless, transparent background,
   no shadow, skip taskbar, `alwaysOnTop` at the `screen-saver` level, visible
   on all workspaces)
-- anchoring the overlay to the bottom-right of the display's work area
+- anchoring the overlay to the bottom of the display's work area
 - showing the overlay with `showInactive()` so it never steals keyboard focus
+- checking the wall clock on short ticks (instead of one long timer) so
+  reminders survive sleep and wake, and re-checking on resume/unlock
+- a tray menu with "remind now", pause and start-at-login items
 - the single-instance lock, the `contextBridge` preload pattern and the NSIS
   installer options
 
-No sprites, art, scheduling or settings code from hydrate-buddy is included.
+No sprites, art or settings code from hydrate-buddy is included.
 The code was rewritten in TypeScript for this prototype. The original license:
 
 ```

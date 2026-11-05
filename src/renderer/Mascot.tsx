@@ -1,140 +1,163 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { useFrame, useLoader, useThree } from '@react-three/fiber';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { AnimationController } from './AnimationController';
+import { CharacterModel } from './character/CharacterModel';
+import { sourceKey, type CharacterSource } from './character/assets';
+import type { CharacterRig } from './character/rig';
+import type { Actor } from './behavior/Director';
+import type { Mark } from './behavior/interactions';
 
-export const MODEL_URL = './models/human-character.glb';
+// Facing angles (model faces +Z = towards the user). Three-quarter turns keep
+// walks readable as 3D, and the sad walk turns further so the face shows.
+const FACE = {
+  left: -Math.PI / 2 + 0.45,
+  leftSad: -Math.PI / 2 + 0.85,
+  right: Math.PI / 2 - 0.45,
+  user: -0.25, // slightly towards the card on the left
+  drink: 0.05, // nearly face-on: the bottle comes in diagonally from the drinking hand
+};
+const WALK_TIME_SCALE = 0.9;
 
-export type Phase = 'hidden' | 'entering' | 'reminding' | 'celebrating' | 'leaving';
-
-/** Character height in world units; any model is rescaled to this. */
-const TARGET_HEIGHT = 1.85;
-/**
- * Ground speed that matches the Walk clip's stride (world units per second at
- * timeScale 1). Movement is driven from this x timeScale, so feet don't slide.
- * Re-tune when replacing the model.
- */
-const WALK_STRIDE_SPEED = 1.4;
-const WALK_TIME_SCALE = 0.85;
-const WALK_SPEED = WALK_STRIDE_SPEED * WALK_TIME_SCALE;
-
-// Facing angles (model faces +Z = towards the user). A three-quarter turn
-// keeps the walk readable as 3D instead of a flat profile.
-const FACE_LEFT = -Math.PI / 2 + 0.45;
-const FACE_RIGHT = Math.PI / 2 - 0.45;
-const FACE_USER = -0.25; // slightly towards the card on the left
-
-interface MascotProps {
-  phase: Phase;
-  onArrived: () => void;
-  onLeft: () => void;
+interface Motion {
+  x: number;
+  facing: number;
+  target: number;
+  walk: { to: Mark; speed: number; resolve: () => void } | null;
+  waits: Array<{ left: number; resolve: () => void }>;
 }
 
-export function Mascot({ phase, onArrived, onLeft }: MascotProps) {
-  const gltf = useLoader(GLTFLoader, MODEL_URL);
+// Stage coordinates are anchored to the screen's right edge (x = 0), like the
+// card, so the stop position doesn't depend on how wide the screen is.
+const STOP_X = -1.15;
+const EXIT_RIGHT_X = 0.9;
+
+interface MascotProps {
+  source: CharacterSource;
+  onActor: (actor: Actor | null) => void;
+}
+
+/**
+ * The character on the overlay stage. Movement, waits and turning advance in
+ * the render loop with the frame delta, so walking stays in step with the
+ * animation at any frame rate.
+ */
+export function Mascot({ source, onActor }: MascotProps) {
   const viewportWidth = useThree((s) => s.viewport.width);
+  const camera = useThree((s) => s.camera);
   const group = useRef<THREE.Group>(null);
   const shadow = useRef<THREE.Mesh>(null);
+  // The rig together with the key of the source it was built from: while a new
+  // character loads, the old rig must not be mistaken for the new one.
+  const [loaded, setLoaded] = useState<{ rig: CharacterRig; key: string } | null>(null);
+  const handleRig = useCallback((r: CharacterRig | null, k: string) => {
+    setLoaded((cur) => (r ? { rig: r, key: k } : cur?.key === k ? null : cur));
+  }, []);
+  const rig = loaded?.rig ?? null;
 
-  // Normalise any model: feet on y = 0, centred on x/z, TARGET_HEIGHT tall.
-  const model = useMemo(() => {
-    const scene = gltf.scene;
-    scene.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) o.frustumCulled = false; // skinned bounds lag behind animation
-    });
-    const box = new THREE.Box3().setFromObject(scene);
-    const size = box.getSize(new THREE.Vector3());
-    const scale = size.y > 0 ? TARGET_HEIGHT / size.y : 1;
-    scene.scale.setScalar(scale);
-    scene.position.set(-((box.min.x + box.max.x) / 2) * scale, -box.min.y * scale, -((box.min.z + box.max.z) / 2) * scale);
-    return scene;
-  }, [gltf]);
-
-  const controller = useMemo(() => new AnimationController(model, gltf.animations), [model, gltf.animations]);
-  useEffect(() => () => controller.dispose(), [controller]);
-
-  // Stage geometry derived from the window size (orthographic camera at x = 0).
-  const half = viewportWidth / 2;
-  const startX = half + 0.8; // fully off-stage, just past the screen's right edge
-  const stopX = half - 1.15;
-
-  const motion = useRef({ x: startX, facing: FACE_LEFT, done: true });
-
+  // Stage marks in world units; only the far-left exit depends on the width.
+  const marks = useRef<Record<Mark, number>>({ stop: STOP_X, exitRight: EXIT_RIGHT_X, exitLeft: 0 });
+  marks.current = { stop: STOP_X, exitRight: EXIT_RIGHT_X, exitLeft: -viewportWidth - 0.9 };
   useEffect(() => {
+    camera.position.x = -viewportWidth / 2; // world x = 0 at the right edge
+    camera.updateMatrixWorld();
+  }, [camera, viewportWidth]);
+
+  const motion = useRef<Motion>({ x: EXIT_RIGHT_X, facing: FACE.left, target: FACE.left, walk: null, waits: [] });
+  const key = sourceKey(source);
+
+  const actor = useMemo<Actor | null>(() => {
+    if (!loaded) return null;
+    const { rig, key: rigKey } = loaded;
     const m = motion.current;
-    switch (phase) {
-      case 'hidden':
-        m.x = startX;
-        m.facing = FACE_LEFT;
-        m.done = true;
-        controller.play('Idle', { fade: 0 });
-        break;
-      case 'entering':
-        m.x = startX;
-        m.facing = FACE_LEFT;
-        m.done = false;
-        if (group.current) {
-          group.current.position.x = m.x;
-          group.current.rotation.y = m.facing;
-        }
-        controller.play('Walk', { fade: 0, timeScale: WALK_TIME_SCALE });
-        break;
-      case 'reminding':
-        controller.play('Wave', { once: true, fade: 0.3 }).then(() => {
-          if (controller.playing === 'Wave') controller.play('Idle', { fade: 0.4 });
+    return {
+      key: rigKey,
+      stage() {
+        m.x = marks.current.exitRight;
+        m.facing = m.target = FACE.left;
+        m.walk?.resolve();
+        m.walk = null;
+        rig.refill();
+        rig.expressions.set('neutral');
+        rig.animations.loop('Idle', { fade: 0 });
+      },
+      walk(to, style) {
+        const role = style === 'sad' ? 'SadWalk' : 'Walk';
+        const timeScale = role === 'SadWalk' && rig.animations.fallbacks.SadWalk ? 0.7 : role === 'Walk' ? WALK_TIME_SCALE : 1;
+        rig.animations.loop(role, { fade: 0.3, timeScale });
+        m.target = marks.current[to] < m.x ? (style === 'sad' ? FACE.leftSad : FACE.left) : FACE.right;
+        m.walk?.resolve();
+        return new Promise<void>((resolve) => {
+          m.walk = { to, speed: rig.speed(role) * timeScale, resolve };
         });
-        break;
-      case 'celebrating':
-        controller.play('Happy', { fade: 0.2 });
-        break;
-      case 'leaving':
-        m.done = false;
-        controller.play('Walk', { fade: 0.3, timeScale: WALK_TIME_SCALE });
-        break;
-    }
-  }, [phase, controller, startX]);
+      },
+      face(to) {
+        m.target = FACE[to];
+      },
+      play(animation) {
+        return rig.animations.once(animation, { fade: 0.3 });
+      },
+      loop(animation) {
+        rig.animations.loop(animation, { fade: 0.35 });
+      },
+      expression(name) {
+        rig.expressions.set(name);
+      },
+      wait(seconds) {
+        return new Promise<void>((resolve) => m.waits.push({ left: seconds, resolve }));
+      },
+    };
+  }, [loaded]);
+
+  useEffect(() => onActor(actor), [actor, onActor]);
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 1 / 20); // a stalled frame must not teleport the character
     const m = motion.current;
-
-    if (phase === 'entering' && !m.done) {
-      m.x = Math.max(stopX, m.x - WALK_SPEED * dt);
-      if (m.x <= stopX) {
-        m.done = true;
-        onArrived();
-      }
-    } else if (phase === 'leaving' && !m.done) {
-      m.x = Math.min(startX, m.x + WALK_SPEED * dt);
-      if (m.x >= startX) {
-        m.done = true;
-        onLeft();
+    if (m.walk) {
+      const toX = marks.current[m.walk.to]; // re-read: the screen may have been resized
+      const step = m.walk.speed * dt;
+      if (Math.abs(toX - m.x) <= step) {
+        m.x = toX;
+        const done = m.walk.resolve;
+        m.walk = null;
+        done();
+      } else {
+        m.x += Math.sign(toX - m.x) * step;
       }
     }
-
-    const targetFacing =
-      phase === 'entering' ? FACE_LEFT : phase === 'leaving' ? FACE_RIGHT : phase === 'hidden' ? FACE_LEFT : FACE_USER;
-    m.facing += (targetFacing - m.facing) * (1 - Math.exp(-9 * dt));
-
+    if (m.waits.length) {
+      for (const w of m.waits) w.left -= dt;
+      const due = m.waits.filter((w) => w.left <= 0);
+      m.waits = m.waits.filter((w) => w.left > 0);
+      for (const w of due) w.resolve();
+    }
+    m.facing += (m.target - m.facing) * (1 - Math.exp(-9 * dt));
     if (group.current) {
       group.current.position.x = m.x;
       group.current.rotation.y = m.facing;
     }
     if (shadow.current) shadow.current.position.x = m.x;
-    controller.update(dt);
 
-    window.__aquamateDebug = { x: m.x, stopX, startX, animation: controller.playing, phase };
+    window.__aquamateDebug = {
+      x: m.x,
+      stopX: marks.current.stop,
+      exitLeftX: marks.current.exitLeft,
+      exitRightX: marks.current.exitRight,
+      walking: !!m.walk,
+      animation: rig?.animations.playing ?? null,
+      expression: rig?.expressions.expression ?? null,
+      bottleLevel: rig?.bottle?.waterLevel ?? null,
+    };
   });
 
   return (
     <>
-      <mesh ref={shadow} rotation-x={-Math.PI / 2} position={[startX, 0.005, 0]} scale={[1, 0.45, 1]}>
+      <mesh ref={shadow} rotation-x={-Math.PI / 2} position={[motion.current.x, 0.005, 0]} scale={[1, 0.45, 1]}>
         <circleGeometry args={[0.42, 32]} />
         <meshBasicMaterial color="#0b2545" transparent opacity={0.18} depthWrite={false} />
       </mesh>
-      <group ref={group} position={[startX, 0, 0]} rotation-y={FACE_LEFT}>
-        <primitive object={model} />
+      <group ref={group} position={[motion.current.x, 0, 0]} rotation-y={FACE.left}>
+        <CharacterModel key={key} source={source} onRig={handleRig} />
       </group>
     </>
   );

@@ -1,10 +1,7 @@
-import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles.css';
+import './settings/settings.css';
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// No StrictMode: its double-mounting would dispose 3D rigs that are still in use.
+createRoot(document.getElementById('root')!).render(<App />);

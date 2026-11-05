@@ -1,18 +1,70 @@
 # AquaMate 💧
 
-A small desktop prototype of a 3D hydration buddy for **Windows and macOS**.
-Click **Test Reminder** and a 3D character walks onto your desktop from the
-bottom-right corner, waves, and reminds you to drink water. He cheers when you
-say you drank some, then walks off again.
+A 3D desktop companion for **Windows and macOS** that reminds you to drink
+water. When it's time, a character walks onto your screen carrying a water
+bottle and waves at you. Tell him you drank water and he drinks with you and
+cheers. Pick **Drink Later** and he sighs and trudges sadly across your whole
+screen.
 
 Built with Electron, React, TypeScript, three.js and React Three Fiber.
 
-| Reminder | "I Drank Water" | Walking away |
+| Reminder | "I Drank Water" | Celebration |
 | --- | --- | --- |
-| ![Reminder card](docs/reminder.png) | ![Happy animation](docs/happy.png) | ![Walking away](docs/walking-away.png) |
+| ![Reminder card](docs/reminder.png) | ![Drinking from the bottle](docs/drinking.png) | ![Celebrating](docs/celebrating.png) |
 
-<sub>These screenshots come from the automated test, which runs on Linux. On
-Windows and macOS the white area is transparent and your desktop shows through.</sub>
+| "Drink Later": a sad walk across the screen |
+| --- |
+| ![Sad walk](docs/sad-walk.png) |
+
+| Settings | Character creator | Your own characters |
+| --- | --- | --- |
+| ![Reminder settings](docs/settings-reminders.png) | ![Character creator](docs/character-creator.png) | ![Character gallery](docs/settings-character.png) |
+
+<sub>Screenshots come from the automated tests, which run on Linux. On Windows
+and macOS the white area around the character is transparent, so your desktop
+shows through.</sub>
+
+## Features
+
+**Engaging companion**
+
+- He carries a water bottle. **I Drank Water** makes him lift it to his mouth
+  and drink, eyes closed, as the water level drops. Then he cheers.
+- **Drink Later** makes him sigh, shake his head and walk slowly across the
+  whole screen with a sad face.
+- His face has happy, sad and "joyful" expressions, and he blinks naturally.
+- The reminder card speaks to you by name, greets you in the morning, says
+  "Ready now?" after a snooze, and shows today's glasses as water drops.
+- A small **×** skips a reminder without fuss.
+
+**Smart reminders**
+
+- **Fixed interval** (every 15 minutes to 3 hours), or **Spread my goal**: the
+  time left today is divided by the glasses you still need, so you get more
+  reminders when you're behind and fewer when you're ahead.
+- A **daily goal**, with an option to stop reminding once you reach it.
+- **Active hours**: one or more time windows, each with its own days. Windows
+  can run past midnight, for example 22:00–06:00 for night shifts.
+- **Drink Later** snooze length.
+- **Wait while I'm away**: no reminders while the computer is idle or locked.
+  When you come back you get one reminder, not a backlog. Works after sleep and
+  wake too.
+- An optional system notification, for when a full-screen app hides the
+  companion.
+- AquaMate lives in the **menu bar (macOS) or system tray (Windows)**, with
+  *Remind me now*, *I drank a glass*, *Pause for 1 hour*, *Pause until
+  tomorrow* and *Settings…*. Closing the settings window keeps it running.
+- **Start at login** (installed app).
+
+**Custom characters**
+
+- A **character creator**: name, skin tone, five hairstyles, hair color, shirt,
+  stripe, trousers, sneakers, glasses and beard, with a live 3D preview.
+- **Upload your own rigged `.glb`**. Clip names such as `Walking`, `Cheering`
+  or `mixamo.com|Wave` are recognized, missing animations use stand-ins, and
+  the bottle goes into the model's right hand automatically.
+- A gallery with thumbnails, a live preview of every animation and expression
+  (drag to turn), edit, delete, and *Use as companion*.
 
 ## Quick start
 
@@ -34,18 +86,8 @@ production build locally instead:
 npm start
 ```
 
-A small **AquaMate** control panel opens. Click **Test Reminder**:
-
-1. The transparent overlay appears in the bottom-right corner of the screen
-   you're using.
-2. The character walks in from the right edge, stops and waves.
-3. A card says **"Hey! Time to drink some water 💧"** with two buttons:
-   - **I Drank Water**: he plays the Happy animation, the card says
-     **"Great job! Stay hydrated."**, and after about 2.4 s he walks away and
-     the overlay hides.
-   - **Dismiss**: he walks away and the overlay hides.
-
-Closing the control panel quits the app.
+The **AquaMate** settings window opens. Click **Test reminder** and watch the
+bottom-right corner of your screen.
 
 ## Try it on a Mac
 
@@ -75,6 +117,12 @@ cd waterintake
 No Git? Download https://github.com/tumatikiran/waterintake/archive/refs/heads/main.zip,
 double-click it to unzip, then `cd` into the `waterintake-main` folder in Terminal.
 
+If you already cloned an earlier version, update it instead:
+
+```bash
+git pull
+```
+
 ### 3. Test it without installing anything
 
 ```bash
@@ -85,14 +133,15 @@ npm install
 npm start
 ```
 
-The **AquaMate** control panel opens. Click **Test Reminder** and watch the
-bottom-right corner of your screen, just above the Dock. While you run it this
-way, the menu bar says "Electron"; the installed app from step 4 says
-"AquaMate". Both use Electron's default icon until a custom one is added. Quit
-by closing the control panel or pressing **⌘Q**.
+The **AquaMate** settings window opens. Click **Test reminder** and watch the
+bottom-right corner of your screen, just above the Dock. Closing the window
+keeps AquaMate running in the menu bar (the water-drop icon). Quit from that
+icon's menu or with **⌘Q**. While you run it this way, the menu bar says
+"Electron"; the installed app from step 4 says "AquaMate".
 
-You can also run the automated test. It runs the whole flow twice on your
-screen, which takes under a minute:
+You can also run the automated tests. They drive the app on your screen for
+about a minute and use a separate, throwaway data folder, so your own
+settings aren't touched:
 
 ```bash
 npm test
@@ -120,7 +169,8 @@ download it, macOS says it can't verify the app. To open it anyway:
 2. Go to **System Settings → Privacy & Security**.
 3. Scroll down, click **Open Anyway** next to the AquaMate message, and confirm.
 
-To uninstall, quit AquaMate and drag it from **Applications** to the Trash.
+To uninstall, quit AquaMate from its menu-bar icon and drag it from
+**Applications** to the Trash.
 
 ## Building installers
 
@@ -144,7 +194,8 @@ npm run dist:mac -- --x64 --arm64
 
 Build each installer on its own OS: electron-builder can't make a macOS DMG from
 Windows, and needs extra tools to make a Windows installer from macOS or Linux.
-Neither installer is signed with a developer certificate:
+The app icon is `build/icon.png`; electron-builder converts it to `.icns` and
+`.ico`. Neither installer is signed with a developer certificate:
 
 - On Windows, SmartScreen may say "Windows protected your PC". Click
   **More info → Run anyway**.
@@ -154,136 +205,157 @@ Neither installer is signed with a developer certificate:
 
 For real distribution, sign with a Developer ID: replace `"identity": "-"` with
 your certificate name, turn `hardenedRuntime` back on and set up notarization.
-To add custom app icons, put `icon.icns` and `icon.ico` in a `build/` folder.
 
 ## Tests
-
-`npm test` builds the app, launches the real Electron app with Playwright and
-runs the whole reminder flow twice: once with **I Drank Water** and once with
-**Dismiss**. It checks that:
-
-- the overlay is hidden at start, then becomes visible, always on top, and
-  anchored to the bottom-right of the work area
-- the character moves left while the Walk clip plays, stops exactly at the
-  designated position, and plays Wave, then Idle
-- **I Drank Water** plays Happy, shows "Great job! Stay hydrated.", waits
-  briefly, then walks right while the Walk clip plays, and hides the window
-- **Dismiss** walks away and hides the window
-- the control panel status updates, and no renderer errors are logged
-
-Screenshots are saved to `test-results/`.
 
 ```bash
 npm test
 ```
 
-On a headless Linux machine or CI, run it under a virtual display:
+This builds the app, then runs both kinds of tests:
+
+- **Unit tests** (`tests/unit/`) for the scheduling rules:
+  - time windows, including overnight and all-day ones
+  - skipped days
+  - the goal-spread interval and its limits
+  - snooze, pause and resume
+  - stopping once the goal is reached
+  - cleaning up settings from older or hand-edited files
+- **End-to-end tests** (`tests/e2e.mjs`), which launch the real Electron app
+  with Playwright, using a throwaway data folder:
+  - **Reminder appears:** the full-width overlay shows, stays on top, and the
+    character walks in, stops at his mark and waves.
+  - **I Drank Water:** he drinks with his eyes closed, the bottle's water
+    level drops, he celebrates, the glass is counted, and he walks out.
+  - **Drink Later:** he sighs with a sad face, walks across the whole screen
+    to the left, and the next reminder is set about 15 minutes later.
+  - **× (skip):** he leaves without counting a glass.
+  - **Settings:** changes save to `settings.json` straight away.
+  - **Character creator:** saves a character with a thumbnail, and that
+    character appears in the next reminder.
+  - **`.glb` upload:** valid files are added and selected, a fake file is
+    refused, and deleting the active character falls back to the default.
+  - **No errors:** the renderer logs no errors.
+
+On a headless Linux machine or CI, run the tests under a virtual display:
 
 ```bash
 xvfb-run -a npm test
 ```
 
-## Project structure
+To test a packaged build, point `AQUAMATE_EXECUTABLE` at it, for example
+`release/linux-unpacked/aquamate`. Screenshots are saved to `test-results/`.
 
-```
-src/
-  main/
-    main.ts              app lifecycle, app:// protocol, IPC
-    window-manager.ts    control panel + transparent mascot overlay
-    preload.ts           safe IPC bridge (contextIsolation + sandbox)
-  renderer/
-    App.tsx              view switch, reminder state machine, control panel
-    Mascot.tsx           GLB loading, walk in/out movement, facing
-    ReminderCard.tsx     floating speech-bubble card
-    AnimationController.ts  AnimationMixer wrapper (cross-fades, one-shots, clip aliases)
-    styles.css           card, button and panel styles + CSS animations
-    index.html, main.tsx, env.d.ts
-assets/
-  models/
-    human-character.glb  placeholder rigged character (see assets/models/README.md)
-scripts/
-  dev.mjs                         dev runner (tsc + Vite + Electron)
-  generate-placeholder-model.mjs  builds the placeholder GLB
-tests/
-  e2e.mjs                         Playwright end-to-end test
-```
+## Custom characters
+
+Open **Settings → Character**:
+
+- **Create character** opens the creator, with a live 3D preview. **Save and
+  use** turns your design into a standard rigged `.glb` stored on your
+  computer. You can edit it later.
+- **Upload .glb** adds any rigged glTF 2.0 binary model (up to 30 MB). AquaMate
+  checks that the file is valid and that three.js can load it, then renders a
+  thumbnail and tells you which animations it found.
+
+What makes an uploaded model work well:
+
+| | |
+| --- | --- |
+| Format | Binary glTF 2.0 (`.glb`), textures embedded, **no Draco/KTX2 compression** |
+| Orientation | Y up, facing +Z (the glTF convention), any size: it's scaled to fit |
+| Rig | A skinned mesh. A right-hand bone (`RightHand`, `Hand_R`, `mixamorig:RightHand`…) gets the bottle |
+| Animations | `Idle`, `Walk`, `Wave`, `Drink`, `Happy`, `Sad`, `SadWalk`, or common variants such as `Walking`, `Cheering` and `Waving`. Missing ones fall back (Drink → Happy, SadWalk → a slower Walk, …) |
+| Expressions | Optional morph targets: `happy`/`sad`/`blink`, ARKit-style (`mouthSmileLeft`, `mouthFrownLeft`, `browInnerUp`, `eyeBlinkLeft`…) or VRoid (`Fcl_ALL_Joy`…) |
+
+More detail, including the metadata AquaMate's own models carry, is in
+[`assets/models/README.md`](assets/models/README.md).
 
 ## How it works
 
-**Smooth movement without flicker.** The overlay is a fixed 720 × 440
-transparent window anchored to the bottom-right of the work area, so it sits
-above the taskbar or Dock. It is positioned once, while it is still hidden, and
-never moves while it is visible. The character walks *inside* it. This avoids the
-jitter and tearing you get from calling `setBounds()` on every frame, which is
-especially noticeable on Windows.
+```
+src/
+  shared/      types, settings validation, pure scheduling rules (unit-tested)
+  main/        Electron main process
+    main.ts             app lifecycle, IPC (checks which window sent each message), app:// protocol
+    window-manager.ts   settings window + transparent overlay, click-through
+    scheduler.ts        smart reminder timer (idle-aware, survives sleep)
+    stores.ts           JSON files for settings and today's count
+    character-store.ts  custom characters on disk (validated .glb + index)
+    tray.ts             menu-bar / system-tray menu
+    preload.ts          the safe window.aquamate API
+  renderer/
+    Overlay.tsx         reminder flow on the overlay
+    Mascot.tsx          the character on stage (the "actor")
+    ReminderCard.tsx    speech-bubble card with progress drops
+    AnimationController.ts  plays animation roles, with fallbacks
+    behavior/           interactions.ts (scripts as data), Director.ts, messages.ts
+    character/          procedural.ts (rig, face, clips), rig.ts, registry.ts,
+                        ExpressionController.ts, WaterBottle.ts, assets.ts, snapshot.ts
+    settings/           settings window: reminders, characters, creator
+assets/models/human-character.glb   the default companion (generated)
+scripts/       generate-placeholder-model.mjs, generate-icons.mjs, dev.mjs
+tests/         unit/ and e2e.mjs
+```
 
-**Showing and hiding.** The renderer resets the character off-stage first and
-only then asks the main process to show the window, which uses `showInactive()`
-so it never steals focus. After the exit, it waits for an empty frame to be
-painted before hiding the window. A stale frame can't flash on the next show.
+- **Reminders run in the main process.** `scheduler.ts` checks the clock every
+  15 seconds instead of setting one long timer, so reminders survive sleep and
+  clock changes. All the rules are pure functions in `src/shared/schedule.ts`.
+- **The overlay is a full-width transparent strip** along the bottom of the
+  screen. It's positioned while hidden and never moves while visible; the
+  character walks inside it. The card is the only clickable area: the main
+  process checks the cursor against the card, which works even though the
+  overlay never takes focus.
+- **Behaviour is data.** Each interaction (`arrive`, `drank`, `later`, `skip`,
+  `timeout`) is a list of steps such as walk, face, play, loop, expression, say
+  and wait. `Director` runs the steps, and `Mascot` carries them out in time
+  with rendering. Walking speed matches each walk animation's stride, so the
+  feet don't slide.
+- **Characters share one pipeline.**
+  - The default, created and uploaded characters are all `.glb` files, turned
+    into a `CharacterRig`: scaled to a common height, with animation roles, an
+    expression controller and a water bottle.
+  - The default and created characters come from `procedural.ts`, which bakes
+    every clip with three constraints: feet stay on the ground, the bottle
+    stays upright in the hand, and while drinking an IK solve brings the
+    bottle's cap to the mouth.
+- **Secure defaults:**
+  - Context isolation, sandboxed renderers and no Node integration.
+  - A strict CSP on the packaged renderer.
+  - Navigation and pop-up windows are blocked.
+  - Every IPC message is checked for the window it came from and validated.
+  - Stored files only ever use IDs the app generated itself.
 
-**Synced animation.** Movement is advanced in `useFrame` using the frame
-delta. Ground speed is `WALK_STRIDE_SPEED × timeScale` of the Walk clip, so the
-feet match the stride. The delta is capped, so a stalled frame never teleports
-the character. Turning is smoothed with exponential damping.
+Adding your own animations, expressions, interactions or reminder rules is
+described in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-**Click-through.** On Windows and macOS the overlay ignores the mouse
-(`setIgnoreMouseEvents(true)`) except while the cursor is over the card. Your
-desktop stays usable even when the character is on screen. The renderer tells
-the main process where the card is, and the main process checks the cursor
-position every 40 ms while the card is visible. This works even though the
-overlay never takes focus, which mouse-move forwarding doesn't reliably do on
-macOS. On macOS, `acceptFirstMouse` makes the first click press the button
-instead of only focusing the window.
+## Your data
 
-**Always on top.** The overlay uses the `screen-saver` level, is visible on all
-workspaces, skips the taskbar and has no shadow. On macOS, AquaMate keeps its
-Dock icon and menu bar (`skipTransformProcessType`).
+Everything stays on your computer, in AquaMate's data folder. **Settings →
+About** shows the exact path; it's under `~/Library/Application Support` on
+macOS and `%APPDATA%` on Windows.
 
-**Lightweight.**
-- The renderer is a single Vite bundle, with no runtime `node_modules` in the
-  installer.
-- The model is about 0.5 MB.
-- WebGL uses the `low-power` GPU preference, and Chromium throttles the
-  overlay while it is hidden.
-
-**Resilient.** If WebGL isn't available or the model fails to load, the
-reminder still works with the card only.
-
-**Secure defaults.**
-- `contextIsolation`, `sandbox` and no `nodeIntegration` are on.
-- A strict CSP is set on the packaged renderer.
-- Navigation and `window.open` are blocked.
-- Packaged files are served from a custom `app://` protocol with a
-  path-traversal guard.
-
-## The 3D character
-
-> ⚠️ **Missing production asset.** No suitably licensed GLB of a stylized man
-> in a blue-and-white outfit with Idle, Walk, Wave and Happy clips was
-> available, so `assets/models/human-character.glb` is a **replaceable
-> placeholder**.
-
-The placeholder is a real rigged model: an 18-bone skeleton, skinned meshes and
-four clips. It is generated by `scripts/generate-placeholder-model.mjs`. You
-can swap in a production model without code changes: the loader rescales and
-grounds any model, and the animation controller maps common clip names such as
-`Walking`, `Cheering` and `mixamo.com|Wave`. The full asset spec and the
-replacement steps are in [`assets/models/README.md`](assets/models/README.md).
+| File | Contents |
+| --- | --- |
+| `settings.json` | Your settings |
+| `today.json` | Today's glass count, which resets at midnight; there's no long-term history |
+| `characters/` | Your created and uploaded characters |
 
 ## Scope and known limitations
 
-This is a prototype. It only shows a reminder when you click **Test Reminder**:
-there is no scheduler, history, settings, database, accounts, analytics or
-backend.
-
-- The automated test runs on Linux with software WebGL. The Windows (NSIS) and
-  macOS (DMG) build settings are included, but the installers haven't been built
-  or tested on real Windows or macOS machines yet.
-- On macOS, the overlay may not appear on top of apps in full-screen mode. Doing
-  that reliably would mean hiding AquaMate's Dock icon.
-- On Linux, click-through is off, so the whole overlay area stays clickable
-  while it is visible.
+- The automated tests run on Linux with software WebGL. The Windows (NSIS) and
+  macOS (DMG) builds are configured but haven't been built or tested on real
+  Windows or macOS machines.
+- **Drink Later** walks across the full screen width, which takes 10–20
+  seconds on a wide monitor. The overlay is click-through, so it doesn't get in
+  your way.
+- For uploaded models, the bottle is placed by a best guess at the right hand,
+  and only models with their own `Drink` clip lift it to the mouth.
+- On macOS, the overlay may not appear on top of apps in full-screen mode; turn
+  on the system notification option for those cases.
+- On Linux, click-through is off, so the overlay area is clickable while it's
+  visible.
+- Only today's count is stored: there are no accounts, sync, history or
+  analytics.
 - The installers aren't signed with a developer certificate (see
   [Building installers](#building-installers)).
 

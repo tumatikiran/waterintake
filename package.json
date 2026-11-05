@@ -20,7 +20,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
   },
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main/main.js",
   "author": "AquaMate prototype",
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -30,10 +30,12 @@
     "start": "npm run build && electron .",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.json",
     "generate:model": "node scripts/generate-placeholder-model.mjs",
-    "test": "npm run build && node tests/e2e.mjs",
+    "test": "npm run build && npm run test:unit && node tests/e2e.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "dist:mac": "npm run build && electron-builder --mac",
+    "test:unit": "node --test \"tests/unit/*.test.mjs\"",
+    "generate:icons": "node scripts/generate-icons.mjs"
   },
   "build": {
     "appId": "com.aquamate.prototype",
@@ -45,6 +47,9 @@
     "files": [
       "dist-electron/**/*.js",
       "dist-renderer/**/*",
+      "!dist-renderer/tray/**",
+      "!dist-renderer/models/README.md",
+      "assets/tray/**",
       "package.json"
     ],
     "asar": true,
