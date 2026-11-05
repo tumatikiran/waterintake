@@ -14,14 +14,14 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # the desktop runtime isn't needed here
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -39,7 +39,7 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: AquaMate-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
