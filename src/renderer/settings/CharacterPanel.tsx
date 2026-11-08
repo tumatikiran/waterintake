@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AppState, CharacterInfo, CharacterRecipe } from '../../shared/types';
-import { DEFAULT_RECIPE, HAIR_COLORS, HAIR_STYLES, OUTFIT_COLORS, SKIN_TONES } from '../../shared/recipe';
+import { BODY_TYPES, DEFAULT_RECIPE, HAIR_COLORS, HAIR_STYLES, OUTFIT_COLORS, SKIN_TONES, withBody } from '../../shared/recipe';
 import { buildCharacter } from '../character/procedural';
 import { loadCharacterAsset, type CharacterSource } from '../character/assets';
 import { createRig } from '../character/rig';
@@ -12,17 +12,18 @@ import { Notice, Row, Segmented, Swatches, Toggle } from './controls';
 const stored = (c: CharacterInfo): CharacterSource => ({ kind: 'stored', id: c.id, revision: c.revision });
 const KIND_LABEL = { builtin: 'Built-in', created: 'Created', uploaded: 'Uploaded' } as const;
 
-// The built-in thumbnail is rendered once per session (it isn't stored).
-let builtinThumb: Promise<string> | null = null;
+// Built-in thumbnails are rendered once per session (they aren't stored).
+const builtinThumbs = new Map<string, Promise<string>>();
 
 function Thumbnail({ character }: { character: CharacterInfo }) {
   const [src, setSrc] = useState(character.thumbnail);
   useEffect(() => {
     if (character.thumbnail) return setSrc(character.thumbnail);
     if (character.kind !== 'builtin') return;
-    builtinThumb ??= renderThumbnail(stored(character));
+    let thumb = builtinThumbs.get(character.id);
+    if (!thumb) builtinThumbs.set(character.id, (thumb = renderThumbnail(stored(character))));
     let alive = true;
-    builtinThumb.then((url) => alive && setSrc(url)).catch(() => {});
+    thumb.then((url) => alive && setSrc(url)).catch(() => {});
     return () => {
       alive = false;
     };
@@ -55,7 +56,7 @@ export function CharacterPanel({ state }: { state: AppState }) {
       const rig = createRig(await loadCharacterAsset(stored(c)));
       const found = rig.animations.found;
       const hasFace = rig.expressions.supported;
-      const hasBottle = rig.bottle !== null;
+      const canHold = rig.props.supported;
       rig.dispose();
       const thumbnail = await renderThumbnail(stored(c));
       await window.aquamate.characters.update(c.id, { thumbnail, animations: found });
@@ -65,7 +66,7 @@ export function CharacterPanel({ state }: { state: AppState }) {
       const notes = [
         missing.length ? `No ${missing.join(', ')} animation${missing.length > 1 ? 's' : ''}, so similar ones stand in.` : 'All animations found.',
         hasFace ? '' : 'No facial expressions.',
-        hasBottle ? '' : 'No right-hand bone found, so there is no bottle.',
+        canHold ? '' : "No right-hand bone found, so it can't hold a water bottle.",
       ].filter(Boolean);
       setStatus({ kind: 'success', text: `${c.name} is now your companion. ${notes.join(' ')}` });
     } catch (err) {
@@ -146,7 +147,9 @@ export function CharacterPanel({ state }: { state: AppState }) {
                 ? 'Uploaded model. Animations it lacks use stand-ins (shown dimmed).'
                 : focus.kind === 'created'
                   ? 'Made in the character creator.'
-                  : 'The default AquaMate companion.'}
+                  : focus.id === 'default'
+                    ? 'The default AquaMate companion.'
+                    : 'A built-in AquaMate companion.'}
             </p>
           </div>
           <div className="preview-actions">
@@ -209,6 +212,9 @@ function CharacterCreator({ editing, onCancel, onSaved }: { editing?: CharacterI
         <Row label="Name" htmlFor="char-name">
           <input id="char-name" className="text-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
         </Row>
+        <Row label="Body">
+          <Segmented label="Body" value={recipe.body} options={BODY_TYPES.map((b) => ({ value: b.id, label: b.label }))} onChange={(v) => setRecipe((r) => withBody(r, v))} />
+        </Row>
         <Row label="Skin tone">
           <Swatches label="Skin tone" value={recipe.skinTone} colors={SKIN_TONES} onChange={(v) => set('skinTone', v)} />
         </Row>
@@ -233,9 +239,11 @@ function CharacterCreator({ editing, onCancel, onSaved }: { editing?: CharacterI
         <Row label="Glasses">
           <Toggle label="Glasses" checked={recipe.glasses} onChange={(v) => set('glasses', v)} />
         </Row>
-        <Row label="Beard">
-          <Toggle label="Beard" checked={recipe.beard} onChange={(v) => set('beard', v)} />
-        </Row>
+        {recipe.body === 'male' && (
+          <Row label="Beard">
+            <Toggle label="Beard" checked={recipe.beard} onChange={(v) => set('beard', v)} />
+          </Row>
+        )}
         {error && <Notice kind="error">{error}</Notice>}
         <div className="creator-actions">
           <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={saving}>

@@ -2,16 +2,17 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { AnimationController } from '../AnimationController';
 import { ExpressionController } from './ExpressionController';
-import { WaterBottle } from './WaterBottle';
+import type { WaterBottle } from './WaterBottle';
 import { SIP_AMOUNT } from './bottleSpec';
-import { RIG_HEIGHT, type AquaMateMeta } from './procedural';
+import { HandProps } from './props';
+import { ARM_R_BONES, HAND_POSE_CLIPS, RIG_HEIGHT, proceduralClips, type AquaMateMeta } from './procedural';
 
 /** Every character is scaled to this height (world units). */
 export const TARGET_HEIGHT = 1.85;
 /** Bottle size for models without AquaMate metadata, matching the procedural rig. */
 const BOTTLE_SCALE = TARGET_HEIGHT / RIG_HEIGHT;
 /** Walking speeds for models without metadata (world units per second at normal speed). */
-const DEFAULT_SPEEDS = { Walk: 1.35, SadWalk: 0.95 };
+const DEFAULT_SPEEDS = { Walk: 1.35, SadWalk: 0.95, Run: 3 };
 const RIGHT_HAND = [/^hand_?r$/i, /^(mixamorig\d*:?)?righthand$/i, /right_?hand$/i, /hand[_.\s-]?r(ight)?$/i, /(^|[_.\s-])r(ight)?[_.\s-]?hand/i];
 
 export interface CharacterAssetData {
@@ -23,10 +24,13 @@ export interface CharacterRig {
   readonly root: THREE.Group;
   readonly animations: AnimationController;
   readonly expressions: ExpressionController;
+  /** What the right hand holds. Empty by default: reminders decide (see props.ts). */
+  readonly props: HandProps;
+  /** The water bottle, while it's the prop in hand. */
   readonly bottle: WaterBottle | null;
   /** Ground speed (world units/s at timeScale 1) that matches a locomotion role, so feet don't slide. */
-  speed(role: 'Walk' | 'SadWalk'): number;
-  /** Fill the bottle again (each reminder starts with a full bottle). */
+  speed(role: 'Walk' | 'SadWalk' | 'Run'): number;
+  /** Fill the bottle again, if one is in hand. */
   refill(): void;
   update(dt: number): void;
   dispose(): void;
@@ -59,8 +63,8 @@ function findRightHand(model: THREE.Object3D): THREE.Object3D | undefined {
 
 /**
  * Turns a loaded character (bundled, created or uploaded) into something the
- * scene can drive: normalized size, animation roles, expressions and a water
- * bottle in the right hand.
+ * scene can drive: normalized size, animation roles, expressions and a grip
+ * in the right hand for props.
  */
 export function createRig(asset: CharacterAssetData): CharacterRig {
   const model = cloneSkinned(asset.scene);
@@ -85,33 +89,46 @@ export function createRig(asset: CharacterAssetData): CharacterRig {
   root.scale.setScalar(scale);
   root.updateMatrixWorld(true);
 
-  const animations = new AnimationController(model, asset.animations);
+  // AquaMate's own characters (bundled or made in the creator) share one
+  // skeleton, so they always use the current clips, whatever version saved
+  // the file: older files had the bottle baked into every pose, or lacked
+  // newer clips. Their right arm switches to a carrying pose while holding a prop.
+  const procedural = meta?.generator === 'aquamate-procedural';
+  const all = procedural ? proceduralClips() : asset.animations;
+  const handPoses = new Set<string>(Object.values(HAND_POSE_CLIPS));
+  const carry = procedural ? all.find((c) => c.name === HAND_POSE_CLIPS.carry) : undefined;
+  const animations = new AnimationController(
+    model,
+    all.filter((c) => !handPoses.has(c.name)),
+    carry ? { bones: ARM_R_BONES, carry } : undefined,
+  );
   const expressions = new ExpressionController(model);
   animations.loop('Idle', { fade: 0 });
   animations.update(0);
   root.updateMatrixWorld(true);
 
-  // The bottle: exact socket from metadata, or a best guess for other rigs.
-  let bottle: WaterBottle | null = new WaterBottle();
+  // The grip props go into: exact from metadata, or a best guess for other rigs.
   const socket = meta ? findBone(model, meta.props.bottle.bone) : findRightHand(model);
-  if (socket && meta) {
-    bottle.object.position.fromArray(meta.props.bottle.position);
-    bottle.object.quaternion.fromArray(meta.props.bottle.quaternion);
-    socket.add(bottle.object);
-  } else if (socket) {
-    // Upright in the idle pose, a little in front of and below the hand.
-    const handQ = socket.getWorldQuaternion(new THREE.Quaternion());
-    const handScale = socket.getWorldScale(new THREE.Vector3()).x || 1;
-    const inv = handQ.clone().invert();
-    const offset = new THREE.Vector3(0.022, -0.058, 0.028).multiplyScalar(BOTTLE_SCALE).applyQuaternion(inv).divideScalar(handScale);
-    bottle.object.position.copy(offset);
-    bottle.object.quaternion.copy(inv);
-    bottle.object.scale.setScalar(BOTTLE_SCALE / handScale);
-    socket.add(bottle.object);
-  } else {
-    bottle.dispose();
-    bottle = null;
+  let grip: THREE.Group | null = null;
+  if (socket) {
+    grip = new THREE.Group();
+    grip.name = 'Grip_R';
+    if (meta) {
+      grip.position.fromArray(meta.props.bottle.position);
+      grip.quaternion.fromArray(meta.props.bottle.quaternion);
+    } else {
+      // Upright in the idle pose, a little in front of and below the hand.
+      const handQ = socket.getWorldQuaternion(new THREE.Quaternion());
+      const handScale = socket.getWorldScale(new THREE.Vector3()).x || 1;
+      const inv = handQ.clone().invert();
+      grip.position.copy(new THREE.Vector3(0.022, -0.058, 0.028).multiplyScalar(BOTTLE_SCALE).applyQuaternion(inv).divideScalar(handScale));
+      grip.quaternion.copy(inv);
+      grip.scale.setScalar(BOTTLE_SCALE / handScale);
+    }
+    socket.add(grip);
   }
+  const props = new HandProps(grip, (holding, instant) => animations.setHolding(holding, instant));
+  const bottle = () => (props.prop?.id === 'waterBottle' ? props.prop.bottle : null);
 
   const drinkWindow = meta?.drink ?? { start: 0.2, end: 0.7 };
   let drinkFrom: number | null = null;
@@ -120,35 +137,42 @@ export function createRig(asset: CharacterAssetData): CharacterRig {
     root,
     animations,
     expressions,
-    bottle,
+    props,
+    get bottle() {
+      return bottle();
+    },
     speed(role) {
-      if (!animations.found.includes(role) && role === 'SadWalk' && animations.fallbacks.SadWalk === 'Walk') return this.speed('Walk');
-      return meta ? meta.locomotion[role] * scale : DEFAULT_SPEEDS[role];
+      // A role played with the walk clip moves at walking speed (the caller scales it with the playback speed).
+      if (role !== 'Walk' && !animations.found.includes(role) && animations.fallbacks[role] === 'Walk') return this.speed('Walk');
+      const fromMeta = meta?.locomotion[role];
+      return fromMeta ? fromMeta * scale : DEFAULT_SPEEDS[role];
     },
     refill() {
-      bottle?.setLevel(1);
+      bottle()?.setLevel(1);
       drinkFrom = null;
     },
     update(dt) {
       animations.update(dt);
       expressions.update(dt);
-      if (!bottle) return;
+      props.update(dt);
+      const b = bottle();
+      if (!b) return void (drinkFrom = null);
       // The water goes down while the Drink clip tips the bottle up.
       if (animations.playing === 'Drink') {
-        drinkFrom ??= bottle.waterLevel;
+        drinkFrom ??= b.waterLevel;
         if (animations.found.includes('Drink')) {
           const p = animations.progress();
           const sip = THREE.MathUtils.smoothstep(p, drinkWindow.start, drinkWindow.end);
-          bottle.setLevel(drinkFrom - SIP_AMOUNT * sip);
+          b.setLevel(drinkFrom - SIP_AMOUNT * sip);
         }
       } else if (drinkFrom !== null) {
-        bottle.setLevel(drinkFrom - SIP_AMOUNT);
+        b.setLevel(drinkFrom - SIP_AMOUNT);
         drinkFrom = null;
       }
     },
     dispose() {
       animations.dispose();
-      bottle?.dispose();
+      props.dispose();
       root.removeFromParent();
     },
   };

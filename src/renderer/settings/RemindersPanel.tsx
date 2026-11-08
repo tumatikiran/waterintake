@@ -50,17 +50,34 @@ export function RemindersPanel({ state }: { state: AppState }) {
             <Select id="interval" label="Interval" value={r.intervalMinutes} options={INTERVALS} onChange={(intervalMinutes) => remind({ intervalMinutes })} />
           </Row>
         )}
-        <Row label="When I pick “Drink Later”" htmlFor="snooze" hint="The companion leaves (sadly) and comes back after this long.">
+        <Row label="When I pick “Drink Later”" htmlFor="snooze" hint="Your companion comes back after this long.">
           <Select id="snooze" label="Snooze" value={r.snoozeMinutes} options={SNOOZES} onChange={(snoozeMinutes) => remind({ snoozeMinutes })} />
         </Row>
-        <Row stacked label="How he leaves" hint="After “Drink Later”, or when a reminder goes unanswered, he walks off with a sad face.">
+      </Section>
+
+      <Section
+        title="When your companion leaves"
+        description="After every reminder: happily when you drink, sadly when you don't."
+      >
+        <Row stacked label="Direction">
           <Segmented
-            label="How he leaves"
-            value={r.laterExit}
-            onChange={(laterExit) => remind({ laterExit })}
+            label="Direction"
+            value={r.exitPath}
+            onChange={(exitPath) => remind({ exitPath })}
             options={[
               { value: 'across', label: 'Across the screen' },
-              { value: 'back', label: 'Back the way he came' },
+              { value: 'back', label: 'Back the way they came' },
+            ]}
+          />
+        </Row>
+        <Row label="Pace">
+          <Segmented
+            label="Pace"
+            value={r.exitGait}
+            onChange={(exitGait) => remind({ exitGait })}
+            options={[
+              { value: 'walk', label: 'Walk' },
+              { value: 'run', label: 'Run' },
             ]}
           />
         </Row>

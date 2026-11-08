@@ -106,7 +106,7 @@ function main(): void {
       const state = powerMonitor.getSystemIdleState(IDLE_THRESHOLD_S);
       return state === 'idle' || state === 'locked';
     },
-    isBusy: () => windows.reminderActive,
+    isBusy: () => windows.busy,
     fire: (reason) => startReminder(reason),
     changed: () => pushState(),
   });
@@ -114,6 +114,7 @@ function main(): void {
   const tray = new AppTray(path.join(APP_ROOT, 'assets', 'tray'), {
     remindNow: () => startReminder('manual'),
     logGlass: () => logGlass(),
+    setRelax: (on) => setRelax(on),
     pause: (minutes) => pause(minutes),
     resume: () => scheduler.resume(),
     openSettings: () => windows.showSettings(),
@@ -128,6 +129,7 @@ function main(): void {
         nextReminderAt: scheduler.nextAt,
         pausedUntil: scheduler.pausedUntil,
         reminderActive: windows.reminderActive,
+        relaxing: windows.relaxing,
       },
       characters: characters.list(),
       app: { version: app.getVersion(), platform: process.platform, isPackaged: app.isPackaged, dataPath: dataDir, mobile: false },
@@ -143,24 +145,31 @@ function main(): void {
       dailyGoal: settings.reminders.dailyGoal,
       nextReminderAt: state.status.nextReminderAt,
       pausedUntil: state.status.pausedUntil,
+      relaxing: state.status.relaxing,
+      canRelax: !windows.relaxing && !windows.busy, // nothing else on screen
     });
   }
 
-  function startReminder(reason: ReminderReason): void {
-    if (windows.reminderActive) return;
+  /** Everything the overlay needs to know about the companion and the user right now. */
+  function sceneContext(reason: ReminderReason): ReminderContext {
     const character = characters.get(settings.characterId) ?? BUILTIN_CHARACTER;
-    const ctx: ReminderContext = {
+    return {
       reason,
       userName: settings.userName,
       glassesToday: log.glassesToday(),
       dailyGoal: settings.reminders.dailyGoal,
       snoozeMinutes: settings.reminders.snoozeMinutes,
-      laterExit: settings.reminders.laterExit,
+      exitPath: settings.reminders.exitPath,
+      exitGait: settings.reminders.exitGait,
       character: { id: character.id, revision: character.revision },
       firstOfDay: log.remindersToday() === 0,
       hour: new Date().getHours(),
     };
-    if (!windows.startReminder(ctx)) return;
+  }
+
+  function startReminder(reason: ReminderReason): void {
+    if (windows.busy) return;
+    if (!windows.startReminder(sceneContext(reason))) return;
     log.reminderShown();
     if (reason === 'manual') scheduler.manualShown();
     if (reason !== 'manual' && settings.reminders.systemNotification && Notification.isSupported()) {
@@ -168,6 +177,11 @@ function main(): void {
       new Notification({ title: 'AquaMate 💧', body: `Hey${name}! Time to drink some water.` }).show();
     }
     pushState();
+  }
+
+  /** Relax mode on or off. Ignored while a reminder is on screen. */
+  function setRelax(on: boolean): void {
+    if (on ? windows.startRelax(sceneContext('manual')) : windows.stopRelax()) pushState();
   }
 
   function logGlass(): number {
@@ -209,6 +223,7 @@ function main(): void {
   });
   ipcMain.on('reminders:pause', (e, minutes: unknown) => fromSettings(e) && pause(minutes));
   ipcMain.on('reminders:resume', (e) => fromSettings(e) && scheduler.resume());
+  ipcMain.on('relax:set', (e, on: unknown) => fromSettings(e) && typeof on === 'boolean' && setRelax(on));
 
   // -------------------------------------------------------- IPC: characters
   ipcMain.handle('characters:import', async (e): Promise<ImportResult> => {
@@ -271,8 +286,8 @@ function main(): void {
     if (!fromMascot(e) || !RESPONSES.includes(kind as ReminderResponse)) throw new Error('Not allowed');
     const glassesToday = kind === 'drank' ? log.addGlass() : log.glassesToday();
     scheduler.reschedule(kind === 'drank' ? 'drank' : kind === 'skip' ? 'skip' : 'later');
-    const { dailyGoal, snoozeMinutes, laterExit } = settings.reminders;
-    return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes, laterExit };
+    const { dailyGoal, snoozeMinutes, exitPath, exitGait } = settings.reminders;
+    return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes, exitPath, exitGait };
   });
 
   // ------------------------------------------------------------- lifecycle

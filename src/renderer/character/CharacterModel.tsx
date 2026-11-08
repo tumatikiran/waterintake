@@ -9,7 +9,7 @@ interface CharacterModelProps {
   onRig?: (rig: CharacterRig | null, key: string) => void;
 }
 
-/** Loads a character (suspends while loading) and keeps its animations, face and bottle updated. */
+/** Loads a character (suspends while loading) and keeps its animations, face and props updated. */
 export function CharacterModel({ source, onRig }: CharacterModelProps) {
   const key = sourceKey(source);
   const asset = use(loadCharacterAsset(source));

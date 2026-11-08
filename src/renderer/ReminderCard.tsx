@@ -22,19 +22,20 @@ function Drop({ filled }: { filled: boolean }) {
   );
 }
 
+/** Today's progress: one line of text, with a drop per glass when the goal is small enough to show them. */
 function Progress({ done, goal }: { done: number; goal: number }) {
-  if (goal > MAX_DROPS) {
-    return (
-      <p className="card-progress-text">
-        {done} / {goal} glasses today
-      </p>
-    );
-  }
   return (
-    <div className="card-progress" role="img" aria-label={`${done} of ${goal} glasses today`}>
-      {Array.from({ length: goal }, (_, i) => (
-        <Drop key={i} filled={i < done} />
-      ))}
+    <div className="card-progress">
+      {goal <= MAX_DROPS && (
+        <div className="card-drops" aria-hidden>
+          {Array.from({ length: goal }, (_, i) => (
+            <Drop key={i} filled={i < done} />
+          ))}
+        </div>
+      )}
+      <p className="card-progress-text">
+        {done} of {goal} {goal === 1 ? 'glass' : 'glasses'} today
+      </p>
     </div>
   );
 }
@@ -60,7 +61,6 @@ export function ReminderCard({ ref, variant = 'dialog', message, actions, onDran
           <p className="reminder-text" key={message.text}>
             {message.text}
           </p>
-          {message.detail && <p className="reminder-detail">{message.detail}</p>}
           {message.progress && <Progress {...message.progress} />}
           {actions && (
             <div className="reminder-actions">

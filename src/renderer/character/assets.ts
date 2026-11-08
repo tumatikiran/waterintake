@@ -1,11 +1,10 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CharacterRecipe } from '../../shared/types';
+import { BUILTIN_MODELS } from '../../shared/characters';
 import { buildCharacter } from './procedural';
 import type { CharacterAssetData } from './rig';
 
-export const DEFAULT_MODEL_URL = './models/human-character.glb';
-
-/** Where a character comes from: a stored model ('default' = bundled) or a live recipe in the creator. */
+/** Where a character comes from: a stored model (built-in ids are bundled files) or a live recipe in the creator. */
 export type CharacterSource = { kind: 'stored'; id: string; revision: number } | { kind: 'recipe'; recipe: CharacterRecipe };
 
 export function sourceKey(s: CharacterSource): string {
@@ -34,8 +33,9 @@ async function load(source: CharacterSource): Promise<CharacterAssetData> {
     return { scene: root, animations: clips };
   }
   const loader = new GLTFLoader();
-  if (source.id === 'default') {
-    const gltf = await loader.loadAsync(DEFAULT_MODEL_URL);
+  const bundled = BUILTIN_MODELS[source.id];
+  if (bundled) {
+    const gltf = await loader.loadAsync(`./models/${bundled}`);
     return { scene: gltf.scene, animations: gltf.animations };
   }
   const bytes = await window.aquamate.characters.load(source.id);

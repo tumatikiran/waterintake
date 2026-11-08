@@ -5,13 +5,30 @@ import { DESKTOP_STAGE, Mascot, stageStyle, type StageLayout } from './Mascot';
 import { ReminderCard } from './ReminderCard';
 import { sourceKey, type CharacterSource } from './character/assets';
 import { Director, type Actor } from './behavior/Director';
-import type { InteractionName } from './behavior/interactions';
+import type { InteractionName, Leave, Step } from './behavior/interactions';
 import { renderMessage, type CardMessage, type MessageKey } from './behavior/messages';
 
 /** If nobody answers, the companion leaves on its own after this long. */
 const ANSWER_TIMEOUT_MS = 3 * 60_000;
 
 type Phase = 'hidden' | InteractionName | 'waiting';
+/** What to start once the character is loaded: a reminder from the edge, Relax mode, or a reminder that interrupts Relax mode. */
+type Pending = 'arrive' | 'relax' | 'wakeToRemind' | 'remindHere';
+
+/**
+ * Where and how he leaves (the same for every answer), from the settings that
+ * came with the reminder or, fresher, with the response. "Back the way he
+ * came" is the right edge, where he walked in.
+ */
+function leaveFor(s: Pick<ResponseResult, 'exitPath' | 'exitGait'> | null): Leave {
+  return { to: s?.exitPath === 'back' ? 'exitRight' : 'exitLeft', gait: s?.exitGait ?? 'walk' };
+}
+
+/** The stored character a scene context asks for (the same object if it's already that one, so nothing reloads). */
+function sourceFor(current: CharacterSource, c: ReminderContext): CharacterSource {
+  const { id, revision } = c.character;
+  return current.kind === 'stored' && current.id === id && current.revision === revision ? current : { kind: 'stored', id, revision };
+}
 
 /** Android: the character stops in the middle, above the gesture area. */
 export const MOBILE_STAGE: StageLayout = { stop: 'center', groundPx: 150, zoom: 150 };
@@ -33,7 +50,10 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
   const [sceneFailed, setSceneFailed] = useState(false);
   const ctx = useRef<ReminderContext | null>(null);
   const result = useRef<ResponseResult | null>(null);
-  const pendingStart = useRef(false);
+  const pending = useRef<Pending | null>(null);
+  // Relax mode: on stage (walking to the middle or sitting), and whether he has sat down yet.
+  const relaxing = useRef(false);
+  const seated = useRef(false);
   const answered = useRef(false);
   const timeout = useRef<number>(undefined);
 
@@ -42,7 +62,10 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
     setCard({ message: renderMessage(key, { reminder: ctx.current, result: result.current }), actions });
   }, []);
 
-  const director = useMemo(() => (actor ? new Director(actor, { say }) : null), [actor, say]);
+  const onStep = useCallback((_name: InteractionName, step: Step) => {
+    if (step.do === 'play' && step.animation === 'SitDown') seated.current = true;
+  }, []);
+  const director = useMemo(() => (actor ? new Director(actor, { say, onStep }) : null), [actor, say, onStep]);
 
   const finish = useCallback(() => {
     setCard({ message: null, actions: false });
@@ -62,34 +85,43 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
       } catch {
         result.current = null;
       }
-      // "Drink Later" and unanswered reminders: across the screen (default) or back the way he came.
-      const back = (result.current?.laterExit ?? ctx.current?.laterExit) === 'back';
-      const script: InteractionName = back && kind === 'later' ? 'laterBack' : back && kind === 'timeout' ? 'timeoutBack' : kind;
-      setPhase(script);
+      setPhase(kind);
       if (!director) return finish();
-      if (await director.run(script)) finish();
+      if (await director.run(kind, leaveFor(result.current ?? ctx.current))) finish();
     },
     [director, finish],
   );
 
-  // Starts the arrival once the right character is loaded and staged.
+  // Starts the arrival (or Relax mode) once the right character is loaded and staged.
   const tryStart = useCallback(async () => {
     const c = ctx.current;
-    if (!pendingStart.current || !c) return;
+    const what = pending.current;
+    if (!what || !c) return;
     const wanted = sourceKey({ kind: 'stored', id: c.character.id, revision: c.character.revision });
     if (sceneFailed) {
-      pendingStart.current = false;
+      pending.current = null;
+      if (what === 'relax') return finish(); // nothing to show without 3D
       window.aquamate.mascotReady();
       setPhase('waiting');
       say('reminder', true);
       return;
     }
-    if (!director || actor?.key !== wanted) return;
-    pendingStart.current = false;
-    actor.stage();
+    if (!director || !actor) return;
+    // From the edge: the wanted character must be loaded. Interrupting Relax mode: whoever is sitting there.
+    if (what === 'arrive' || what === 'relax') {
+      if (actor.key !== wanted) return;
+      actor.stage();
+    }
+    pending.current = null;
     window.aquamate.mascotReady();
-    setPhase('arrive');
-    if (await director.run('arrive')) {
+    setPhase(what);
+    if (what === 'relax') {
+      relaxing.current = true;
+      seated.current = false;
+      void director.run('relax');
+      return;
+    }
+    if (await director.run(what)) {
       // Already answered with a notification button (Android): play that answer now.
       if (c.answer) return answer(c.answer);
       setPhase('waiting');
@@ -103,15 +135,40 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
         ctx.current = c;
         result.current = null;
         answered.current = false;
-        pendingStart.current = true;
-        setSource((s) =>
-          s.kind === 'stored' && s.id === c.character.id && s.revision === c.character.revision
-            ? s
-            : { kind: 'stored', id: c.character.id, revision: c.character.revision },
-        );
+        // A reminder ends Relax mode: the companion gets up and reminds from where they are.
+        const fromRelax = relaxing.current;
+        relaxing.current = false;
+        pending.current = fromRelax ? (seated.current ? 'wakeToRemind' : 'remindHere') : 'arrive';
+        if (!fromRelax) setSource((s) => sourceFor(s, c));
         void tryStart();
       }),
     [tryStart],
+  );
+
+  // Relax mode on (walk to the middle and sit) or off (get up and leave).
+  useEffect(
+    () =>
+      window.aquamate.onRelax(async (c) => {
+        if (c) {
+          ctx.current = c;
+          result.current = null;
+          pending.current = 'relax';
+          setSource((s) => sourceFor(s, c));
+          void tryStart();
+          return;
+        }
+        if (pending.current === 'relax') {
+          pending.current = null; // turned off before he even appeared
+          return finish();
+        }
+        if (!relaxing.current || !director) return;
+        relaxing.current = false;
+        // Still on the way to sit down: just leave. Otherwise stand up first.
+        const how = seated.current ? 'wake' : 'skip';
+        setPhase(how);
+        if (await director.run(how, leaveFor(ctx.current))) finish();
+      }),
+    [tryStart, director, finish],
   );
   useEffect(() => {
     void tryStart();

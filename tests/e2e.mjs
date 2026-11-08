@@ -82,7 +82,7 @@ try {
   assert.equal((await state()).status.glassesToday, 0);
 
   // ------------------------------------------------------ "I Drank Water"
-  step('Test reminder → walks in from the right carrying a full bottle');
+  step('Test reminder → walks in from the right carrying a full water bottle (it shows what the reminder is for)');
   await testReminder();
   await phase('arrive');
   const win = await waitVisible(true);
@@ -94,6 +94,7 @@ try {
   const a = await debug();
   // Frame-rate independent: wait for movement rather than sampling once (software WebGL can be slow to start).
   await waitDebug((x0) => window.__aquamateDebug.x < x0 - 0.05 && window.__aquamateDebug.animation === 'Walk', a.x);
+  assert.equal((await debug()).prop, 'waterBottle', 'a water reminder brings the water bottle');
   assert.equal((await debug()).bottleLevel, 1, 'bottle starts full');
 
   step('stops at its mark, waves, shows the card with three choices');
@@ -121,15 +122,17 @@ try {
   assert.equal(after.expression, 'joyful');
   await card.getByText('Great job! Stay hydrated.').waitFor();
   await card.getByText('1 of 8 glasses today').waitFor();
+  assert.equal(await card.getByText(/glasses? today/).count(), 1, 'one progress line, no duplicate');
   await sleep(400);
   await shot('3-celebrating.png');
   assert.equal((await state()).status.glassesToday, 1, 'glass counted');
 
-  step('then walks back out to the right and the overlay hides');
+  step('then walks off across the screen (the default) and the overlay hides');
   await waitAnim('Walk', 6000);
   const l1 = await debug();
-  await waitDebug((x0) => window.__aquamateDebug.x > x0 + 0.05, l1.x); // moves right while leaving
-  await phase('hidden', 10000);
+  await waitDebug((x0) => window.__aquamateDebug.x < x0 - 0.3, l1.x); // moves left while leaving
+  assert.equal((await debug()).expression, 'happy');
+  await phase('hidden', 40000);
   assert.equal((await waitVisible(false)).visible, false);
   await settings.getByTestId('glasses-today').getByText('1').waitFor();
 
@@ -155,12 +158,15 @@ try {
   assert.equal((await state()).status.glassesToday, 1, 'not counted as a glass');
 
   // ------------------------------------------------------------------ Skip
-  step('✕ skips: walks back out without counting a glass');
+  step('✕ skips: leaves like Drink Later (across the screen by default) without counting a glass');
   await testReminder();
   await phase('waiting');
   await card.getByRole('button', { name: 'Skip this reminder' }).click();
   await phase('skip');
-  await phase('hidden', 10000);
+  await waitAnim('Walk', 6000);
+  const k1 = await debug();
+  await waitDebug((x0) => window.__aquamateDebug.x < x0 - 0.3, k1.x); // heading left
+  await phase('hidden', 40000);
   assert.equal((await state()).status.glassesToday, 1);
 
   // ------------------------------------------------------------- Settings
@@ -185,15 +191,16 @@ try {
   await settings.evaluate(() => document.querySelector('.tab-panel').scrollTo(0, 0));
   await settings.screenshot({ path: join(OUT, '5-settings-reminders.png') });
 
-  step('"How he leaves: Back the way he came": after Drink Later he walks back sadly the way he came');
-  await settings.getByRole('radio', { name: 'Back the way he came' }).click();
+  step('"Direction: Back the way they came": after Drink Later he walks back sadly the way he came');
+  const leaving = (group, option) => settings.getByRole('radiogroup', { name: group }).getByRole('radio', { name: option });
+  await leaving('Direction', 'Back the way they came').click();
   await sleep(200);
-  assert.equal(JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders.laterExit, 'back');
+  assert.equal(JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders.exitPath, 'back');
   await testReminder();
   await phase('waiting');
   await card.getByRole('button', { name: 'Drink Later' }).click();
   await card.getByText("Okay… I'll remind you again in 15 minutes.").waitFor();
-  await phase('laterBack');
+  await phase('later');
   await waitAnim('SadWalk', 8000);
   const back0 = await debug();
   await waitDebug((x0) => window.__aquamateDebug.x > x0 + 0.3, back0.x, 10000); // to the right, where he came from
@@ -203,11 +210,37 @@ try {
   await phase('hidden', 5000);
   assert.equal((await waitVisible(false)).visible, false);
 
+  step('"Direction: Back the way they came" + "Pace: Run": after drinking he runs back the way he came');
+  await leaving('Pace', 'Run').click();
+  await sleep(200);
+  const pace = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders;
+  assert.equal(pace.exitPath, 'back');
+  assert.equal(pace.exitGait, 'run');
+  await testReminder();
+  await phase('waiting');
+  await card.getByRole('button', { name: 'I Drank Water' }).click();
+  await phase('drank');
+  await waitAnim('Run', 15000);
+  const r0 = await debug();
+  const t0 = Date.now();
+  await waitDebug((x0) => window.__aquamateDebug.x > x0 + 0.6, r0.x, 10000); // running right, where he came from
+  await shot('3b-run-back.png');
+  await waitDebug((x0) => window.__aquamateDebug.x > x0 + 1.5, r0.x, 10000);
+  const runSpeed = ((await debug()).x - r0.x) / ((Date.now() - t0) / 1000);
+  assert.ok(runSpeed > 1.8, `runs faster than a walk (~1.25 units/s): ${runSpeed.toFixed(2)} units/s`);
+  await waitDebug(() => window.__aquamateDebug.x >= window.__aquamateDebug.exitRightX - 1e-6, null, 10000);
+  await phase('hidden', 5000);
+  assert.equal((await waitVisible(false)).visible, false);
+
   // ----------------------------------------------------- Custom characters
   step('character creator: design, save, and it becomes the companion');
   await settings.getByRole('tab', { name: 'Character' }).click();
   await settings.getByRole('button', { name: 'Create character' }).click();
   await settings.getByLabel('Name').fill('Mia');
+  assert.equal(await settings.getByRole('switch', { name: 'Beard' }).count(), 1, 'beard is offered for a male body');
+  await settings.getByRole('radio', { name: 'Female' }).click();
+  assert.equal(await settings.getByRole('radio', { name: 'Long' }).getAttribute('aria-checked'), 'true', 'Female switches short hair to long');
+  assert.equal(await settings.getByRole('switch', { name: 'Beard' }).count(), 0, 'no beard option for a female body');
   await settings.getByRole('radio', { name: 'Bun' }).click();
   await settings.getByRole('radio', { name: 'Hair color #b54a2a' }).click();
   await settings.getByRole('radio', { name: 'Shirt color #1fa38a' }).click();
@@ -221,11 +254,14 @@ try {
   let st = await state();
   const mia = st.characters.find((c) => c.name === 'Mia');
   assert.ok(mia && mia.kind === 'created' && mia.thumbnail?.startsWith('data:image/png'), 'saved with a thumbnail');
+  assert.equal(mia.recipe.body, 'female');
+  assert.equal(mia.recipe.beard, false);
   assert.equal(st.settings.characterId, mia.id);
 
   step('the created character shows up for reminders');
   await testReminder();
   await phase('waiting', 20000);
+  assert.equal((await debug()).character, `stored:${mia.id}:${mia.revision}`);
   await sleep(300);
   await shot('7-custom-character.png');
   await card.getByRole('button', { name: 'Skip this reminder' }).click();
@@ -249,7 +285,7 @@ try {
   st = await state();
   const robo = st.characters.find((c) => c.name === 'Robo Buddy');
   assert.ok(robo && robo.kind === 'uploaded');
-  assert.deepEqual(robo.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk']);
+  assert.deepEqual(robo.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'SitDown', 'Relax', 'StandUp']);
   assert.equal(st.settings.characterId, robo.id);
   await settings.locator('.preview-loading').waitFor({ state: 'detached', timeout: 15000 });
   await settings.getByRole('button', { name: 'Drink' }).click();
@@ -262,7 +298,100 @@ try {
   await settings.getByText('Robo Buddy was deleted.').waitFor();
   st = await state();
   assert.equal(st.settings.characterId, 'default');
-  assert.equal(st.characters.length, 2);
+  assert.equal(st.characters.length, 3); // Aqua, Marina, Mia
+
+  // Every interaction, for each built-in: the overlay must show the chosen character throughout.
+  const everyInteraction = async (who, key) => {
+    // The debug state is written each rendered frame, so allow for the first frame of a new phase.
+    const onStage = async (when) => {
+      await waitDebug((k) => window.__aquamateDebug.character === k, key, 1000).catch(() => {});
+      assert.equal((await debug()).character, key, `${who} is on stage ${when}`);
+    };
+    for (const [button, script] of [
+      ['I Drank Water', 'drank'],
+      ['Drink Later', 'later'],
+      ['Skip this reminder', 'skip'],
+    ]) {
+      await testReminder();
+      await phase('arrive', 20000);
+      await onStage('walking in');
+      await phase('waiting', 20000);
+      await onStage('waiting');
+      await card.getByRole('button', { name: button }).click();
+      await phase(script);
+      await onStage(`after "${button}"`);
+      if (script === 'drank') {
+        await waitAnim('Drink', 10000);
+        await onStage('drinking');
+        await sleep(1700);
+        await shot(`9-${who.toLowerCase()}-drinking.png`);
+      }
+      await waitDebug(() => window.__aquamateDebug.walking, null, 15000);
+      await onStage('leaving');
+      await phase('hidden', 40000);
+    }
+
+    // Relax mode: walk to the middle, sit down, close the eyes, breathe; then get up and leave.
+    await settings.getByRole('button', { name: 'Relax 🌿' }).click();
+    await phase('relax');
+    assert.equal((await waitVisible(true)).visible, true, 'the overlay shows for Relax mode');
+    assert.equal((await state()).status.relaxing, true);
+    await onStage('walking to the middle to relax');
+    await waitAnim('SitDown', 20000);
+    const sat = await debug();
+    assert.ok(Math.abs(sat.x - sat.centerX) < 0.01, `${who} sits in the middle of the screen`);
+    await waitAnim('Relax', 6000);
+    await waitDebug(() => window.__aquamateDebug.expression === 'relaxed', null, 4000);
+    assert.equal((await debug()).prop, null, 'relaxing is prop-free');
+    await onStage('relaxing');
+    await sleep(2500);
+    assert.equal((await debug()).animation, 'Relax', 'keeps relaxing until turned off');
+    await shot(`10-${who.toLowerCase()}-relaxing.png`);
+    await settings.getByRole('button', { name: 'Stop relaxing' }).click();
+    await phase('wake');
+    assert.equal((await state()).status.relaxing, false);
+    await waitAnim('StandUp', 6000);
+    await onStage('standing up');
+    await waitDebug(() => window.__aquamateDebug.walking, null, 15000);
+    await phase('hidden', 40000);
+    assert.equal((await waitVisible(false)).visible, false, 'the overlay hides after leaving');
+  };
+
+  step('Marina, the built-in female companion: chosen in settings, on stage for every interaction');
+  await settings.getByRole('button', { name: /Marina/ }).click();
+  await settings.locator('.preview-loading').waitFor({ state: 'detached', timeout: 15000 });
+  await settings.getByRole('button', { name: 'Use as companion' }).click();
+  await settings.getByText('Your companion', { exact: true }).waitFor();
+  assert.equal((await state()).settings.characterId, 'default-female');
+  assert.equal(await settings.getByRole('button', { name: 'Delete' }).count(), 0, 'built-ins cannot be deleted');
+  await sleep(600);
+  await settings.screenshot({ path: join(OUT, '9-marina.png') });
+  await everyInteraction('Marina', 'stored:default-female:1');
+
+  step('back to Aqua, the built-in male companion: on stage for every interaction');
+  await settings.getByRole('button', { name: /Aqua/ }).click();
+  await settings.locator('.preview-loading').waitFor({ state: 'detached', timeout: 15000 });
+  await settings.getByRole('button', { name: 'Use as companion' }).click();
+  await settings.getByText('Your companion', { exact: true }).waitFor();
+  assert.equal((await state()).settings.characterId, 'default');
+  await everyInteraction('Aqua', 'stored:default:1');
+
+  step('a reminder during Relax mode: he gets up and reminds from where he sat, and Relax mode ends');
+  await settings.getByRole('button', { name: 'Relax 🌿' }).click();
+  await waitAnim('Relax', 25000);
+  await testReminder();
+  await phase('wakeToRemind');
+  assert.equal((await debug()).prop, null, 'still empty-handed while getting up');
+  await waitAnim('StandUp', 6000);
+  assert.equal((await state()).status.relaxing, false);
+  assert.equal((await state()).status.reminderActive, true);
+  await phase('waiting', 20000);
+  const reminded = await debug();
+  assert.equal(reminded.prop, 'waterBottle', 'brings the bottle out for the reminder');
+  assert.ok(Math.abs(reminded.x - reminded.stopX) < 0.01, 'walked over to the usual spot by the card');
+  await card.getByRole('button', { name: 'Skip this reminder' }).click();
+  await phase('hidden', 40000);
+  assert.equal(await settings.getByRole('button', { name: 'Relax 🌿' }).isEnabled(), true);
 
   assert.deepEqual(errors, [], 'no renderer errors');
   console.log('\n✅ AquaMate end-to-end tests passed');

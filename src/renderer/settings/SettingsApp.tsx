@@ -13,7 +13,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 function Today({ state }: { state: AppState }) {
   const now = useNow();
-  const { glassesToday: done, pausedUntil, reminderActive } = state.status;
+  const { glassesToday: done, pausedUntil, reminderActive, relaxing } = state.status;
   const { enabled, dailyGoal: goal } = state.settings.reminders;
   const schedule = scheduleLine(state, now);
 
@@ -42,6 +42,16 @@ function Today({ state }: { state: AppState }) {
               Pause 1 h
             </button>
           ))}
+        <button
+          type="button"
+          className={`btn btn-ghost btn-small${relaxing ? ' is-on' : ''}`}
+          aria-pressed={relaxing}
+          onClick={() => window.aquamate.setRelax(!relaxing)}
+          disabled={reminderActive}
+          title={relaxing ? 'Your companion gets up and leaves' : 'Your companion sits down in the middle of the screen and relaxes with you'}
+        >
+          {relaxing ? 'Stop relaxing' : 'Relax 🌿'}
+        </button>
         <button type="button" className="btn btn-primary" onClick={() => window.aquamate.testReminder()} disabled={reminderActive}>
           Test reminder
         </button>

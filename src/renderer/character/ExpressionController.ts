@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { EXPRESSION_CHANNELS, EXPRESSIONS, type Expression, type ExpressionChannel } from './registry';
+import { EXPRESSION_CHANNELS, EXPRESSION_EASE, EXPRESSIONS, type Expression, type ExpressionChannel } from './registry';
 
 interface Binding {
   mesh: THREE.Mesh;
@@ -19,6 +19,7 @@ export class ExpressionController {
   private readonly value: Record<ExpressionChannel, number> = { happy: 0, sad: 0, blink: 0 };
   private target: Partial<Record<ExpressionChannel, number>> = {};
   private name: Expression = 'neutral';
+  private rate = 12;
   private blinkIn = 2 + Math.random() * 3;
   private blinkT = -1;
 
@@ -54,6 +55,8 @@ export class ExpressionController {
   }
 
   set(expression: Expression): void {
+    // Slow expressions also fade out slowly (eyes open gently after relaxing).
+    this.rate = EXPRESSION_EASE[expression] ?? EXPRESSION_EASE[this.name] ?? 12;
     this.name = expression;
     this.target = EXPRESSIONS[expression];
   }
@@ -65,7 +68,7 @@ export class ExpressionController {
   }
 
   update(dt: number): void {
-    const k = 1 - Math.exp(-12 * dt);
+    const k = 1 - Math.exp(-this.rate * dt);
     for (const c of CHANNELS) this.value[c] += ((this.target[c] ?? 0) - this.value[c]) * k;
 
     // Natural blinking on top, unless the eyes are already (mostly) closed.

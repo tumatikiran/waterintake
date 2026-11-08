@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { CharacterInfo, SaveCreatedInput } from '../shared/types';
 import {
   BUILTIN_CHARACTER,
+  BUILTIN_CHARACTERS,
   CHARACTER_ID,
   CHARACTER_LIMITS,
   assertGlb,
@@ -32,7 +33,7 @@ export class CharacterStore {
   }
 
   list(): CharacterInfo[] {
-    return [BUILTIN_CHARACTER, ...this.items];
+    return [...BUILTIN_CHARACTERS, ...this.items];
   }
 
   get(id: string): CharacterInfo | null {

@@ -111,6 +111,7 @@ html[data-view='settings'] .muted { color: var(--muted); }
 .hint.warn { color: var(--warn); }
 .row-control { flex: none; display: flex; align-items: center; }
 .row.is-stacked { flex-direction: column; align-items: stretch; gap: 8px; }
+.row.is-stacked .row-label { flex: none; } /* not the phone layout's 180px basis, which would become a height */
 .row.is-stacked .row-control { justify-content: flex-start; margin-left: 0; }
 
 /* Controls */
@@ -157,6 +158,8 @@ html[data-view='settings'] .muted { color: var(--muted); }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
 
 .btn-small { padding: 7px 11px; font-size: 13px; }
+/* A toggle button that's on (Relax mode). */
+.btn.btn-ghost.is-on { background: var(--success-soft); color: var(--success-ink); }
 .btn-danger { background: var(--danger-soft); color: var(--danger); }
 .btn-danger:hover:not(:disabled) { filter: brightness(0.97); }
 

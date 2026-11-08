@@ -7,11 +7,15 @@ export interface TrayStatus {
   dailyGoal: number;
   nextReminderAt: number | null;
   pausedUntil: number | null;
+  relaxing: boolean;
+  /** Relax mode can start now (nothing else is on screen). */
+  canRelax: boolean;
 }
 
 export interface TrayActions {
   remindNow(): void;
   logGlass(): void;
+  setRelax(on: boolean): void;
   pause(minutes: number | 'tomorrow'): void;
   resume(): void;
   openSettings(): void;
@@ -65,6 +69,13 @@ export class AppTray {
         { type: 'separator' },
         { label: 'Remind me now', click: () => a.remindNow() },
         { label: 'I drank a glass 💧', click: () => a.logGlass() },
+        {
+          label: 'Relax mode 🌿',
+          type: 'checkbox',
+          checked: s.relaxing,
+          enabled: s.relaxing || s.canRelax,
+          click: () => a.setRelax(!s.relaxing),
+        },
         { type: 'separator' },
         ...(s.pausedUntil
           ? [{ label: 'Resume reminders', click: () => a.resume() }]

@@ -45,9 +45,15 @@ test('mergeSettings applies a partial update', () => {
   assert.equal(merged.userName, 'Sam');
 });
 
-test('"How he leaves" after Drink Later: across the screen by default, or back the way he came', () => {
-  assert.equal(DEFAULT_SETTINGS.reminders.laterExit, 'across');
-  assert.equal(sanitizeSettings({ reminders: { laterExit: 'back' } }).reminders.laterExit, 'back');
-  assert.equal(sanitizeSettings({ reminders: { laterExit: 'sideways' } }).reminders.laterExit, 'across');
-  assert.equal(sanitizeSettings({ reminders: {} }).reminders.laterExit, 'across', 'older settings files get the default');
+test('"When your companion leaves": one path for every exit, and walk or run', () => {
+  const d = DEFAULT_SETTINGS.reminders;
+  assert.deepEqual([d.exitPath, d.exitGait], ['across', 'walk']);
+  const set = sanitizeSettings({ reminders: { exitPath: 'back', exitGait: 'run' } }).reminders;
+  assert.deepEqual([set.exitPath, set.exitGait], ['back', 'run']);
+  const bad = sanitizeSettings({ reminders: { exitPath: 'sideways', exitGait: 'fly' } }).reminders;
+  assert.deepEqual([bad.exitPath, bad.exitGait], ['across', 'walk']);
+  const empty = sanitizeSettings({ reminders: {} }).reminders;
+  assert.deepEqual([empty.exitPath, empty.exitGait], ['across', 'walk'], 'older settings files get the defaults');
+  assert.equal(sanitizeSettings({ reminders: { laterExit: 'back' } }).reminders.exitPath, 'back', 'the old Drink Later choice carries over');
+  assert.equal('laterExit' in sanitizeSettings({ reminders: { laterExit: 'back' } }).reminders, false, 'and the old key is dropped');
 });

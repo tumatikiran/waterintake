@@ -1,15 +1,17 @@
 import type { AnimationRole, Expression } from '../character/registry';
-import { INTERACTIONS, type Facing, type InteractionName, type Mark, type Step } from './interactions';
+import type { PropId } from '../character/props';
+import { INTERACTIONS, type Facing, type Gait, type InteractionName, type Leave, type Mark, type Step } from './interactions';
 import type { MessageKey } from './messages';
 
 /** What a character on stage can do. Implemented by Mascot.tsx, frame-synced with rendering. */
 export interface Actor {
   readonly key: string; // which character this actor is
   stage(at?: Mark): void;
-  walk(to: Mark, style: 'normal' | 'sad'): Promise<void>;
+  prop(id: PropId | null): void;
+  walk(to: Mark, style: 'normal' | 'sad', gait: Gait): Promise<void>;
   face(to: Facing): void;
   play(animation: AnimationRole): Promise<void>;
-  loop(animation: AnimationRole): void;
+  loop(animation: AnimationRole, fade?: number): void;
   expression(name: Expression): void;
   wait(seconds: number): Promise<void>;
 }
@@ -18,6 +20,9 @@ export interface Stage {
   say(message: MessageKey | null, actions: boolean): void;
   onStep?(name: InteractionName, step: Step): void;
 }
+
+/** Walk back out to the right, where he came from. */
+export const DEFAULT_LEAVE: Leave = { to: 'exitRight', gait: 'walk' };
 
 /** Runs interaction scripts. Starting a new one interrupts the current one. */
 export class Director {
@@ -29,12 +34,12 @@ export class Director {
   ) {}
 
   /** Resolves true when the script ran to the end, false when it was interrupted. */
-  async run(name: InteractionName): Promise<boolean> {
+  async run(name: InteractionName, leave: Leave = DEFAULT_LEAVE): Promise<boolean> {
     const token = ++this.token;
     for (const step of INTERACTIONS[name]) {
       if (token !== this.token) return false;
       this.stage.onStep?.(name, step);
-      await this.exec(step);
+      await this.exec(step, leave);
     }
     return token === this.token;
   }
@@ -43,19 +48,21 @@ export class Director {
     this.token++;
   }
 
-  private exec(step: Step): Promise<void> | void {
+  private exec(step: Step, leave: Leave): Promise<void> | void {
     const a = this.actor;
     switch (step.do) {
       case 'stage':
         return a.stage(step.at);
       case 'walk':
-        return a.walk(step.to, step.style ?? 'normal');
+        return step.to === 'exit' ? a.walk(leave.to, step.style ?? 'normal', leave.gait) : a.walk(step.to, step.style ?? 'normal', 'walk');
+      case 'prop':
+        return a.prop(step.id);
       case 'face':
         return a.face(step.to);
       case 'play':
         return a.play(step.animation);
       case 'loop':
-        return a.loop(step.animation);
+        return a.loop(step.animation, step.fade);
       case 'expression':
         return a.expression(step.name);
       case 'say':

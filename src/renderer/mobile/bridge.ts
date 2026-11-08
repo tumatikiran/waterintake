@@ -24,6 +24,7 @@ import { planReminders, startOfDay, type PlannedReminder, type ScheduleTrigger }
 import { dayOf, sanitizeDaily, withGlass, withReminderShown } from '../../shared/daily';
 import {
   BUILTIN_CHARACTER,
+  BUILTIN_CHARACTERS,
   CHARACTER_ID,
   CHARACTER_LIMITS,
   assertGlb,
@@ -145,12 +146,13 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     await Filesystem.writeFile({ path: modelPath(id), data: toBase64(bytes), directory: Directory.Data, recursive: true });
   }
   function allCharacters(): CharacterInfo[] {
-    return [BUILTIN_CHARACTER, ...custom];
+    return [...BUILTIN_CHARACTERS, ...custom];
   }
 
   // ----------------------------------------------------------------- state
   let permission: NotificationPermission = await checkPermission();
   let reminderActive = false;
+  let relaxing = false; // Relax mode on the Today screen (not saved: it ends when the app closes)
   const stateChannel = new Channel<AppState>();
   const startChannel = new Channel<ReminderContext>(true);
   const visibleChannel = new Channel<boolean>(true);
@@ -163,6 +165,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
         nextReminderAt: schedule.nextAt,
         pausedUntil: schedule.pausedUntil,
         reminderActive,
+        relaxing,
       },
       characters: allCharacters(),
       app: {
@@ -293,7 +296,8 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       glassesToday: today.glasses,
       dailyGoal: settings.reminders.dailyGoal,
       snoozeMinutes: settings.reminders.snoozeMinutes,
-      laterExit: settings.reminders.laterExit,
+      exitPath: settings.reminders.exitPath,
+      exitGait: settings.reminders.exitGait,
       character: { id: character.id, revision: character.revision },
       firstOfDay: today.reminders === 0,
       hour: new Date().getHours(),
@@ -345,6 +349,11 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       return settings;
     },
     testReminder: () => startReminder('manual'),
+    setRelax(on) {
+      if (relaxing === on) return;
+      relaxing = on;
+      push();
+    },
     async logGlass() {
       daily = withGlass(daily);
       await writePref('today', daily);
@@ -436,6 +445,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     },
 
     onReminderStart: (cb) => startChannel.on(cb),
+    onRelax: () => () => {}, // Android relaxes on the Today screen, not in the reminder scene
     mascotReady: () => {},
     setHitRegion: () => {},
     onPointer: () => () => {},
@@ -448,8 +458,8 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       await reschedule(kind === 'drank' ? 'drank' : kind === 'skip' ? 'skip' : 'later');
       void LocalNotifications.removeAllDeliveredNotifications().catch(() => {});
       const glassesToday = dayOf(daily).glasses;
-      const { dailyGoal, snoozeMinutes, laterExit } = settings.reminders;
-      return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes, laterExit };
+      const { dailyGoal, snoozeMinutes, exitPath, exitGait } = settings.reminders;
+      return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes, exitPath, exitGait };
     },
     mascotDone() {
       reminderActive = false;

@@ -19,6 +19,8 @@ const FACE = {
   drink: 0.05, // nearly face-on: the bottle comes in diagonally from the drinking hand
 };
 const WALK_TIME_SCALE = 0.9;
+/** Characters without a run clip "run" with their walk played this much faster. */
+const RUN_FALLBACK_TIME_SCALE = 1.9;
 
 interface Motion {
   x: number;
@@ -81,8 +83,8 @@ export function Mascot({ source, onActor, layout = DESKTOP_STAGE, debugName = '_
 
   // Stage marks in world units; only the far-left exit (and a centered stop) depend on the width.
   const stopX = layout.stop === 'center' ? -viewportWidth / 2 : STOP_X;
-  const marks = useRef<Record<Mark, number>>({ stop: stopX, exitRight: EXIT_RIGHT_X, exitLeft: 0 });
-  marks.current = { stop: stopX, exitRight: EXIT_RIGHT_X, exitLeft: -viewportWidth - 0.9 };
+  const marks = useRef<Record<Mark, number>>({ stop: stopX, center: 0, exitRight: EXIT_RIGHT_X, exitLeft: 0 });
+  marks.current = { stop: stopX, center: -viewportWidth / 2, exitRight: EXIT_RIGHT_X, exitLeft: -viewportWidth - 0.9 };
   useEffect(() => {
     camera.position.x = -viewportWidth / 2; // world x = 0 at the right edge
     camera.position.y = viewportHeight / 2 - layout.groundPx / camera.zoom; // ground at groundPx from the bottom
@@ -103,13 +105,24 @@ export function Mascot({ source, onActor, layout = DESKTOP_STAGE, debugName = '_
         m.facing = m.target = at === 'stop' ? FACE.user : FACE.left;
         m.walk?.resolve();
         m.walk = null;
-        rig.refill();
+        rig.props.show(null, true); // empty-handed until a script brings something out
         rig.expressions.set('neutral');
         rig.animations.loop('Idle', { fade: 0 });
       },
-      walk(to, style) {
-        const role = style === 'sad' ? 'SadWalk' : 'Walk';
-        const timeScale = role === 'SadWalk' && rig.animations.fallbacks.SadWalk ? 0.7 : role === 'Walk' ? WALK_TIME_SCALE : 1;
+      walk(to, style, gait) {
+        // Running wins over the sad shuffle: a sad run keeps the sad face and the turned-out facing.
+        const role = gait === 'run' ? 'Run' : style === 'sad' ? 'SadWalk' : 'Walk';
+        const fallback = rig.animations.fallbacks[role];
+        const timeScale =
+          role === 'Run'
+            ? fallback
+              ? RUN_FALLBACK_TIME_SCALE
+              : 1
+            : role === 'SadWalk' && fallback
+              ? 0.7
+              : role === 'Walk'
+                ? WALK_TIME_SCALE
+                : 1;
         rig.animations.loop(role, { fade: 0.3, timeScale });
         const sad = style === 'sad';
         m.target = marks.current[to] < m.x ? (sad ? FACE.leftSad : FACE.left) : sad ? FACE.rightSad : FACE.right;
@@ -118,14 +131,17 @@ export function Mascot({ source, onActor, layout = DESKTOP_STAGE, debugName = '_
           m.walk = { to, speed: rig.speed(role) * timeScale, resolve };
         });
       },
+      prop(id) {
+        rig.props.show(id);
+      },
       face(to) {
         m.target = FACE[to];
       },
       play(animation) {
         return rig.animations.once(animation, { fade: 0.3 });
       },
-      loop(animation) {
-        rig.animations.loop(animation, { fade: 0.35 });
+      loop(animation, fade = 0.35) {
+        rig.animations.loop(animation, { fade });
       },
       expression(name) {
         rig.expressions.set(name);
@@ -137,6 +153,13 @@ export function Mascot({ source, onActor, layout = DESKTOP_STAGE, debugName = '_
   }, [loaded]);
 
   useEffect(() => onActor(actor), [actor, onActor]);
+  // A stage that's gone must not leave its last state behind (tests read it).
+  useEffect(
+    () => () => {
+      delete window[debugName];
+    },
+    [debugName],
+  );
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 1 / 20); // a stalled frame must not teleport the character
@@ -169,12 +192,15 @@ export function Mascot({ source, onActor, layout = DESKTOP_STAGE, debugName = '_
     window[debugName] = {
       x: m.x,
       stopX: marks.current.stop,
+      centerX: marks.current.center,
       exitLeftX: marks.current.exitLeft,
       exitRightX: marks.current.exitRight,
       walking: !!m.walk,
       animation: rig?.animations.playing ?? null,
       expression: rig?.expressions.expression ?? null,
+      prop: rig?.props.held ?? null,
       bottleLevel: rig?.bottle?.waterLevel ?? null,
+      character: loaded?.key ?? null,
     };
   });
 

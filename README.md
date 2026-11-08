@@ -30,15 +30,25 @@ shows through.</sub>
 
 **Engaging companion**
 
-- He carries a water bottle. **I Drank Water** makes him lift it to his mouth
-  and drink, eyes closed, as the water level drops. Then he cheers.
+- His hands are free by default: what he carries shows what a reminder is
+  for. A water reminder walks in carrying a water bottle. **I Drank Water**
+  makes him lift it to his mouth and drink, eyes closed, as the water level
+  drops. Then he cheers. (Medicine and other reminder types are planned.)
 - **Drink Later** makes him sigh, shake his head and walk slowly away with a
-  sad face. You choose how he leaves: **across the whole screen** (the
-  default) or **back the way he came**.
+  sad face.
+- You choose how he leaves, whether you drank or not: **across the whole
+  screen** or **back the way he came**, at a **walk** or a **run**.
 - His face has happy, sad and "joyful" expressions, and he blinks naturally.
 - The reminder card speaks to you by name, greets you in the morning, says
   "Ready now?" after a snooze, and shows today's glasses as water drops.
 - A small **×** skips a reminder without fuss.
+- **Relax mode** 🌿: turn it on from the menu bar or system tray, or with
+  **Relax** in the settings window. Your companion walks to the middle of the
+  screen with empty hands, sits down cross-legged, closes their eyes with a faint smile and
+  breathes slowly (about one breath every 5½ seconds), head resting gently
+  to one side. Turn it off and they open their eyes, stand up, wave and leave
+  the way you chose. A reminder during Relax mode wakes them: they get up and
+  remind you, and Relax mode ends.
 
 **Smart reminders**
 
@@ -48,22 +58,31 @@ shows through.</sub>
 - A **daily goal**, with an option to stop reminding once you reach it.
 - **Active hours**: one or more time windows, each with its own days. Windows
   can run past midnight, for example 22:00–06:00 for night shifts.
-- **Drink Later**: the snooze length, and how he leaves (across the screen or
-  back the way he came). The same choice applies when nobody answers.
+- **Drink Later**: the snooze length.
+- **When he leaves**: one setting for every exit (after drinking, Drink
+  Later, × or no answer). **Where he goes**: across the screen (default) or
+  back the way he came. **Pace**: walk (default) or run.
 - **Wait while I'm away**: no reminders while the computer is idle or locked.
   When you come back you get one reminder, not a backlog. Works after sleep and
   wake too.
 - An optional system notification, for when a full-screen app hides the
   companion.
 - AquaMate lives in the **menu bar (macOS) or system tray (Windows)**, with
-  *Remind me now*, *I drank a glass*, *Pause for 1 hour*, *Pause until
+  *Remind me now*, *I drank a glass*, *Relax mode*, *Pause for 1 hour*, *Pause until
   tomorrow* and *Settings…*. Closing the settings window keeps it running.
 - **Start at login** (installed app).
 
-**Custom characters**
+**Characters**
 
-- A **character creator**: name, skin tone, five hairstyles, hair color, shirt,
-  stripe, trousers, sneakers, glasses and beard, with a live 3D preview.
+- Two built-in companions: **Aqua** (male, the default) and **Marina**
+  (female). Pick either in **Settings → Character**.
+- A **character creator**: name, body (male or female), skin tone, five
+  hairstyles, hair color, shirt, stripe, trousers, sneakers, glasses and beard
+  (male only), with a live 3D preview. Picking a body also picks a matching
+  hairstyle, which you can still change. A female body has a narrower waist,
+  fuller hips, eyelashes and rosy cheeks, so it reads as female with any
+  hairstyle. Both bodies share one skeleton, so every animation (drinking,
+  walking, running) works the same.
 - **Upload your own rigged `.glb`**. Clip names such as `Walking`, `Cheering`
   or `mixamo.com|Wave` are recognized, missing animations use stand-ins, and
   the bottle goes into the model's right hand automatically.
@@ -78,7 +97,8 @@ creator and reminder rules:
 - Reminders arrive as **notifications with "I drank water" and "Drink later"
   buttons**, even when the app is closed. Tapping one opens the animated scene.
 - The character lives on a **Today** screen, where he drinks along when you log
-  a glass.
+  a glass. **Relax** sits him down right there; tap him (or **Wake up**) to
+  get him up. Logging a glass while he relaxes gets him up to drink along.
 
 | Today | Reminder | Drink Later | Character |
 | --- | --- | --- | --- |
@@ -255,17 +275,30 @@ This builds both apps, then runs three kinds of tests:
   - **Reminder appears:** the full-width overlay shows, stays on top, and the
     character walks in, stops at his mark and waves.
   - **I Drank Water:** he drinks with his eyes closed, the bottle's water
-    level drops, he celebrates, the glass is counted, and he walks out.
+    level drops, he celebrates, the glass is counted, and he walks off
+    across the screen. With **Where he goes: Back the way he came** and
+    **Pace: Run**, he runs back to the right, faster than he walks.
   - **Drink Later:** he sighs with a sad face, walks across the whole screen
     to the left, and the next reminder is set about 15 minutes later. With
-    **How he leaves: Back the way he came**, he walks back to the right
+    **Where he goes: Back the way he came**, he walks back to the right
     instead, still sad.
-  - **× (skip):** he leaves without counting a glass.
+  - **× (skip):** he leaves the same way as Drink Later, without counting a
+    glass.
   - **Settings:** changes save to `settings.json` straight away.
-  - **Character creator:** saves a character with a thumbnail, and that
-    character appears in the next reminder.
+  - **Character creator:** saves a character (with a female body) with a
+    thumbnail, and that character appears in the next reminder.
   - **`.glb` upload:** valid files are added and selected, a fake file is
     refused, and deleting the active character falls back to the default.
+  - **Marina and Aqua:** each built-in can be chosen (built-ins can't be
+    deleted) and is the one on stage throughout every interaction: walking
+    in, waiting, drinking, Drink Later, × and leaving. The Android suite
+    checks the same on the Today screen and in the reminder scene.
+  - **Relax mode:** for Marina and for Aqua, the companion walks to the exact
+    middle of the screen, sits down, relaxes with closed eyes until it is
+    turned off, then stands up and leaves, and the overlay hides. A reminder
+    during Relax mode gets them up, they walk over to the card, and Relax
+    mode ends. The Android suite checks Relax on the Today screen, coming
+    back to it while relaxing, tap to wake, and logging a glass while relaxing.
   - **No errors:** the renderer logs no errors.
 - **Android UI tests** (`tests/mobile-e2e.mjs`), which run the phone app in a
   phone-sized window and cover scheduled notifications, notification buttons,
@@ -285,6 +318,8 @@ To test a packaged build, point `AQUAMATE_EXECUTABLE` at it, for example
 
 Open **Settings → Character**:
 
+- **Aqua** and **Marina** are built in. Select one and choose **Use as
+  companion**.
 - **Create character** opens the creator, with a live 3D preview. **Save and
   use** turns your design into a standard rigged `.glb` stored on your
   computer. You can edit it later.
@@ -299,7 +334,7 @@ What makes an uploaded model work well:
 | Format | Binary glTF 2.0 (`.glb`), textures embedded, **no Draco/KTX2 compression** |
 | Orientation | Y up, facing +Z (the glTF convention), any size: it's scaled to fit |
 | Rig | A skinned mesh. A right-hand bone (`RightHand`, `Hand_R`, `mixamorig:RightHand`…) gets the bottle |
-| Animations | `Idle`, `Walk`, `Wave`, `Drink`, `Happy`, `Sad`, `SadWalk`, or common variants such as `Walking`, `Cheering` and `Waving`. Missing ones fall back (Drink → Happy, SadWalk → a slower Walk, …) |
+| Animations | `Idle`, `Walk`, `Wave`, `Drink`, `Happy`, `Sad`, `SadWalk`, `Run`, `SitDown`, `Relax` (seated, looping), `StandUp`, or common variants such as `Walking`, `Running`, `Cheering`, `Waving` and `Sitting`. Missing ones fall back (Drink → Happy, SadWalk → a slower Walk, Run → a faster Walk, the Relax ones → Idle, so the model relaxes standing up, …) |
 | Expressions | Optional morph targets: `happy`/`sad`/`blink`, ARKit-style (`mouthSmileLeft`, `mouthFrownLeft`, `browInnerUp`, `eyeBlinkLeft`…) or VRoid (`Fcl_ALL_Joy`…) |
 
 More detail, including the metadata AquaMate's own models carry, is in
@@ -332,7 +367,8 @@ src/
     mobile/             Android: bridge.ts (Capacitor storage + notifications),
                         MobileApp.tsx (tabs, Today screen, reminder scene)
 android/       the native Android project (Capacitor)
-assets/models/human-character.glb   the default companion (generated)
+assets/models/human-character.glb          Aqua, the default companion (generated)
+assets/models/human-character-female.glb   Marina (generated)
 scripts/       generate-placeholder-model.mjs, generate-icons.mjs, dev.mjs, android-apk.mjs
 tests/         unit/, e2e.mjs (desktop), mobile-e2e.mjs + mobile-host.cjs (Android UI)
 ```
@@ -392,10 +428,10 @@ macOS and `%APPDATA%` on Windows.
 - On Android, reminders can arrive a few minutes late (Android batches
   alarms to save battery), and the companion appears inside the app rather
   than over other apps.
-- By default, **Drink Later** walks across the full screen width, which takes
+- By default he leaves by walking across the full screen width, which takes
   10–20 seconds on a wide monitor. The overlay is click-through, so it doesn't
-  get in your way. For a short exit, set **How he leaves** to **Back the way he
-  came**.
+  get in your way. For a short exit, set **Where he goes** to **Back the way
+  he came**, or **Pace** to **Run**.
 - For uploaded models, the bottle is placed by a best guess at the right hand,
   and only models with their own `Drink` clip lift it to the mouth.
 - On macOS, the overlay may not appear on top of apps in full-screen mode; turn

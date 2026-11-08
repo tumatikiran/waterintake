@@ -1,10 +1,9 @@
 import type { ReminderContext, ResponseResult } from '../../shared/types';
 
-export type MessageKey = 'reminder' | 'cheers' | 'greatJob' | 'later' | 'missed' | 'hello';
+export type MessageKey = 'reminder' | 'cheers' | 'greatJob' | 'later' | 'missed' | 'hello' | 'relax' | 'refreshed';
 
 export interface CardMessage {
   text: string;
-  detail?: string;
   progress?: { done: number; goal: number };
 }
 
@@ -13,7 +12,6 @@ export interface MessageContext {
   result: ResponseResult | null;
 }
 
-const glasses = (n: number) => `${n} ${n === 1 ? 'glass' : 'glasses'}`;
 
 /** Personal, context-aware wording for the reminder card. */
 export function renderMessage(key: MessageKey, { reminder: r, result }: MessageContext): CardMessage {
@@ -33,12 +31,16 @@ export function renderMessage(key: MessageKey, { reminder: r, result }: MessageC
       return { text: `Hi${name ? ` ${name}` : ''}! Let's stay hydrated 💧`, progress };
     case 'greatJob':
       return result?.goalReached && done === goal
-        ? { text: `Daily goal reached! Amazing 🎉`, detail: `${glasses(done)} today`, progress }
-        : { text: 'Great job! Stay hydrated.', detail: `${done} of ${glasses(goal)} today`, progress };
+        ? { text: `Daily goal reached! Amazing 🎉`, progress }
+        : { text: 'Great job! Stay hydrated.', progress };
     case 'later': {
       const m = result?.snoozeMinutes ?? r.snoozeMinutes;
       return { text: `Okay… I'll remind you again in ${m} minutes.` };
     }
+    case 'relax':
+      return { text: `Time to unwind${name ? `, ${name}` : ''}. Breathe in… and out 🌿` };
+    case 'refreshed':
+      return { text: 'All refreshed! A sip of water would be nice now 💧' };
     case 'missed': {
       const m = result?.snoozeMinutes ?? r.snoozeMinutes;
       return { text: `I'll check on you again in ${m} minutes.` };

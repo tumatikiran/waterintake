@@ -29,6 +29,8 @@ export interface AquaMateApi {
   logGlass(): Promise<number>;
   pause(minutes: number | 'tomorrow'): void;
   resume(): void;
+  /** Turns Relax mode on or off. A reminder also ends it (the companion gets up to remind you). */
+  setRelax(on: boolean): void;
   characters: {
     import(): Promise<ImportResult>;
     saveCreated(input: SaveCreatedInput): Promise<CharacterInfo>;
@@ -40,6 +42,8 @@ export interface AquaMateApi {
 
   // --------------------------------------------------------- reminder scene
   onReminderStart(cb: (ctx: ReminderContext) => void): Unsubscribe;
+  /** Desktop overlay: Relax mode starts (with who relaxes and how they'll leave) or ends (null). */
+  onRelax(cb: (ctx: ReminderContext | null) => void): Unsubscribe;
   /** The scene is staged; the desktop shows its overlay window now. */
   mascotReady(): void;
   /** Desktop click-through: where the card is (window-relative CSS px), or null. */

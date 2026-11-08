@@ -19,7 +19,13 @@ const ROLE_LABELS: Record<AnimationRole, string> = {
   Happy: 'Happy',
   Sad: 'Sad',
   SadWalk: 'Sad walk',
+  Run: 'Run',
+  SitDown: 'Sit down',
+  Relax: 'Relax',
+  StandUp: 'Stand up',
 };
+/** Sitting down and standing up are transitions; the Relax chip plays them around the seated loop. */
+const TRANSITIONS: AnimationRole[] = ['SitDown', 'StandUp'];
 
 function Turntable({ angle, children }: { angle: React.RefObject<number>; children: ReactNode }) {
   const group = useRef<THREE.Group>(null);
@@ -35,11 +41,13 @@ export function CharacterPreview({ source, onRig }: { source: CharacterSource; o
   const [active, setActive] = useState<AnimationRole>('Idle');
   const [expression, setExpression] = useState<Expression>('neutral');
   const angle = useRef(-0.35);
+  const seated = useRef(false);
   const drag = useRef<{ x: number; start: number } | null>(null);
 
   const handleRig = useCallback(
     (r: CharacterRig | null) => {
       setRig(r);
+      seated.current = false;
       setActive('Idle');
       setExpression('neutral');
       onRig?.(r);
@@ -50,10 +58,31 @@ export function CharacterPreview({ source, onRig }: { source: CharacterSource; o
   const play = async (role: AnimationRole) => {
     if (!rig) return;
     setActive(role);
-    if (role === 'Drink') rig.refill();
+    // Relax sits down first and closes the eyes; anything else after it stands up first.
+    if (role === 'Relax' && !seated.current) {
+      seated.current = true;
+      rig.expressions.set('happy');
+      setExpression('happy');
+      await rig.animations.once('SitDown');
+      if (rig.animations.playing !== 'SitDown') return; // another chip was pressed meanwhile
+      rig.animations.loop('Relax');
+      rig.expressions.set('relaxed');
+      setExpression('relaxed');
+      return;
+    }
+    if (role !== 'Relax' && seated.current) {
+      seated.current = false;
+      rig.expressions.set('neutral');
+      setExpression('neutral');
+      await rig.animations.once('StandUp');
+      if (rig.animations.playing !== 'StandUp') return;
+    }
+    // Drinking needs the bottle; it's put away again afterwards.
+    rig.props.show(role === 'Drink' ? 'waterBottle' : null);
     if (ANIMATION_ROLES[role].loop) return rig.animations.loop(role);
     await rig.animations.once(role);
     if (rig.animations.playing === role) {
+      rig.props.show(null);
       rig.animations.loop('Idle');
       setActive('Idle');
     }
@@ -98,7 +127,7 @@ export function CharacterPreview({ source, onRig }: { source: CharacterSource; o
       </div>
       <div className="chip-row" role="group" aria-label="Animations">
         <span className="chip-label">Animation</span>
-        {ROLE_ORDER.map((role) => {
+        {ROLE_ORDER.filter((role) => !TRANSITIONS.includes(role)).map((role) => {
           const missing = rig && !rig.animations.found.includes(role);
           return (
             <button

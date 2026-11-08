@@ -27,7 +27,7 @@ export async function renderThumbnail(source: CharacterSource, size = 256): Prom
     rig.expressions.set('happy');
     rig.expressions.snap();
     rig.update(0.4);
-    // Head to hips, with the bottle at the bottom edge.
+    // Head to hips.
     const camera = new THREE.OrthographicCamera(-0.7, 0.7, 2.08, 0.68, 0.1, 50);
     camera.position.set(0, 0, 10);
     renderer.render(scene, camera);

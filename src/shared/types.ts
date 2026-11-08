@@ -17,8 +17,10 @@ export interface TimeWindow {
   end: string; // "HH:MM", 24-hour
 }
 
-/** How the companion leaves after "Drink Later" (or an unanswered reminder): across the screen, or back the way he came. */
-export type LaterExit = 'across' | 'back';
+/** Which way the companion leaves: across the screen (to the far left), or back the way he came (to the right). */
+export type ExitPath = 'across' | 'back';
+/** How the companion moves when he leaves. */
+export type ExitGait = 'walk' | 'run';
 
 /** fixed: every N minutes. goal: spread the remaining daily goal over the remaining active time. */
 export type IntervalMode = 'fixed' | 'goal';
@@ -30,7 +32,8 @@ export interface ReminderSettings {
   dailyGoal: number; // glasses per day
   stopWhenGoalReached: boolean;
   snoozeMinutes: number; // "Drink Later"
-  laterExit: LaterExit;
+  exitPath: ExitPath; // how he leaves every reminder: after drinking, Drink Later, ✕ or no answer
+  exitGait: ExitGait;
   schedule: TimeWindow[];
   pauseWhenAway: boolean; // hold reminders while the computer is idle or locked
   systemNotification: boolean; // also show an OS notification
@@ -50,7 +53,11 @@ export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? (T[K] exte
 export type HairStyle = 'short' | 'spiky' | 'long' | 'bun' | 'buzz';
 
 /** Everything needed to rebuild a character made in the creator. */
+/** Body shape of a created character. Both share one skeleton, so every animation fits either. */
+export type BodyType = 'male' | 'female';
+
 export interface CharacterRecipe {
+  body: BodyType;
   skinTone: string;
   hairStyle: HairStyle;
   hairColor: string;
@@ -87,7 +94,8 @@ export interface ReminderContext {
   glassesToday: number;
   dailyGoal: number;
   snoozeMinutes: number;
-  laterExit: LaterExit;
+  exitPath: ExitPath;
+  exitGait: ExitGait;
   character: { id: string; revision: number };
   firstOfDay: boolean;
   hour: number; // local hour, for greetings
@@ -101,7 +109,8 @@ export interface ResponseResult {
   dailyGoal: number;
   goalReached: boolean;
   snoozeMinutes: number;
-  laterExit: LaterExit;
+  exitPath: ExitPath;
+  exitGait: ExitGait;
 }
 
 export interface StatusSnapshot {
@@ -109,6 +118,8 @@ export interface StatusSnapshot {
   nextReminderAt: number | null;
   pausedUntil: number | null;
   reminderActive: boolean;
+  /** Relax mode: the companion is sitting on screen, eyes closed, until it is turned off. */
+  relaxing: boolean;
 }
 
 export interface AppState {

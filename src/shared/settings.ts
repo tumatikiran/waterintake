@@ -1,4 +1,4 @@
-import type { DeepPartial, ReminderSettings, Settings, TimeWindow, Weekday } from './types';
+import type { DeepPartial, ExitPath, ReminderSettings, Settings, TimeWindow, Weekday } from './types';
 import { parseTime } from './schedule';
 
 export const ALL_DAYS: Weekday[] = [0, 1, 2, 3, 4, 5, 6];
@@ -13,7 +13,8 @@ export const DEFAULT_SETTINGS: Settings = {
     dailyGoal: 8,
     stopWhenGoalReached: false,
     snoozeMinutes: 15,
-    laterExit: 'across',
+    exitPath: 'across',
+    exitGait: 'walk',
     schedule: [{ days: [...ALL_DAYS], start: '09:00', end: '21:00' }],
     pauseWhenAway: true,
     systemNotification: false,
@@ -32,6 +33,7 @@ export const LIMITS = {
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
+const exitPath = (v: unknown, d: ExitPath): ExitPath => (v === 'across' || v === 'back' ? v : d);
 const int = (v: unknown, [min, max]: readonly [number, number], d: number) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : d;
 
@@ -57,7 +59,9 @@ function sanitizeReminders(v: unknown): ReminderSettings {
     dailyGoal: int(r.dailyGoal, LIMITS.dailyGoal, d.dailyGoal),
     stopWhenGoalReached: bool(r.stopWhenGoalReached, d.stopWhenGoalReached),
     snoozeMinutes: int(r.snoozeMinutes, LIMITS.snoozeMinutes, d.snoozeMinutes),
-    laterExit: r.laterExit === 'back' || r.laterExit === 'across' ? r.laterExit : d.laterExit,
+    // laterExit: the Drink Later-only setting this replaced; keep the user's choice.
+    exitPath: exitPath(r.exitPath ?? r.laterExit, d.exitPath),
+    exitGait: r.exitGait === 'walk' || r.exitGait === 'run' ? r.exitGait : d.exitGait,
     // An empty schedule would silently mean "never remind", so fall back to the default.
     schedule: schedule.length ? schedule : d.schedule.map((w) => ({ ...w, days: [...w.days] })),
     pauseWhenAway: bool(r.pauseWhenAway, d.pauseWhenAway),

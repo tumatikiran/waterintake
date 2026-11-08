@@ -17,6 +17,8 @@ import type { HitRegion, ReminderContext } from '../shared/types';
 export const MASCOT_HEIGHT = 440;
 
 export type View = 'settings' | 'mascot';
+/** What the overlay is showing: a reminder, Relax mode, or the companion leaving after Relax mode. */
+type OverlayUse = 'reminder' | 'relax' | 'leaving';
 
 export interface WindowManagerOptions {
   preload: string;
@@ -35,7 +37,7 @@ export class WindowManager {
   settings: BrowserWindow | null = null;
   mascot: BrowserWindow | null = null;
   quitting = false;
-  private active = false;
+  private use: OverlayUse | null = null;
   private hitRegion: HitRegion | null = null;
   private pointerTimer: ReturnType<typeof setInterval> | null = null;
   private interactive = false;
@@ -46,7 +48,16 @@ export class WindowManager {
   }
 
   get reminderActive(): boolean {
-    return this.active;
+    return this.use === 'reminder';
+  }
+
+  get relaxing(): boolean {
+    return this.use === 'relax';
+  }
+
+  /** Something other than Relax mode is on screen (a reminder can't start now). */
+  get busy(): boolean {
+    return this.use === 'reminder' || this.use === 'leaving';
   }
 
   // ---------------------------------------------------------------- settings
@@ -136,20 +147,43 @@ export class WindowManager {
     win.setBounds({ x, y: y + height - MASCOT_HEIGHT, width, height: MASCOT_HEIGHT });
   }
 
-  /** Step 1: place the (still hidden) overlay and let the renderer stage the character off-screen. */
+  /**
+   * Step 1: place the (still hidden) overlay and let the renderer stage the
+   * character off-screen. During Relax mode the overlay is already showing:
+   * the relaxing companion gets up and reminds from where they sit.
+   */
   startReminder(ctx: ReminderContext): boolean {
     const win = this.mascot;
-    if (!win || win.isDestroyed() || this.active) return false;
-    this.active = true;
-    this.positionMascot();
+    if (!win || win.isDestroyed() || this.busy) return false;
+    if (!this.use) this.positionMascot();
+    this.use = 'reminder';
     win.webContents.send('reminder:start', ctx);
+    return true;
+  }
+
+  /** Relax mode: the companion walks to the middle of the screen and sits down. */
+  startRelax(ctx: ReminderContext): boolean {
+    const win = this.mascot;
+    if (!win || win.isDestroyed() || this.use) return false;
+    this.use = 'relax';
+    this.positionMascot();
+    win.webContents.send('relax', ctx);
+    return true;
+  }
+
+  /** Relax mode off: the companion gets up and leaves (then the renderer reports done). */
+  stopRelax(): boolean {
+    const win = this.mascot;
+    if (!win || win.isDestroyed() || this.use !== 'relax') return false;
+    this.use = 'leaving';
+    win.webContents.send('relax', null);
     return true;
   }
 
   /** Step 2: the renderer is staged, so showing cannot flash stale frames. */
   showMascot(): void {
     const win = this.mascot;
-    if (!win || win.isDestroyed() || !this.active) return;
+    if (!win || win.isDestroyed() || !this.use) return;
     win.showInactive(); // never steal keyboard focus from the user's work
     win.setAlwaysOnTop(true, 'screen-saver'); // re-assert after show (macOS)
     win.moveTop();
@@ -161,7 +195,7 @@ export class WindowManager {
     if (!win || win.isDestroyed()) return;
     this.setHitRegion(null);
     win.hide();
-    this.active = false;
+    this.use = null;
   }
 
   /**

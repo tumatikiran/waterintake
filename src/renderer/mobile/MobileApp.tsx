@@ -52,7 +52,7 @@ function PermissionCard({ permission }: { permission: 'denied' | 'prompt' }) {
 function TodayScreen({ state, paused }: { state: AppState; paused: boolean }) {
   const now = useNow();
   const [cheers, setCheers] = useState(0);
-  const { glassesToday: done, pausedUntil, reminderActive } = state.status;
+  const { glassesToday: done, pausedUntil, reminderActive, relaxing } = state.status;
   const { dailyGoal: goal, enabled } = state.settings.reminders;
   const permission = state.app.notifications ?? 'prompt';
 
@@ -70,7 +70,7 @@ function TodayScreen({ state, paused }: { state: AppState; paused: boolean }) {
         </div>
       </header>
       {permission !== 'granted' && <PermissionCard permission={permission} />}
-      <HomeStage state={state} paused={paused} cheers={cheers} />
+      <HomeStage state={state} paused={paused} cheers={cheers} onWake={() => window.aquamate.setRelax(false)} />
       <section className="m-summary" data-testid="today">
         <ProgressRing done={done} goal={goal} />
         <div className="today-text">
@@ -96,6 +96,14 @@ function TodayScreen({ state, paused }: { state: AppState; paused: boolean }) {
         <div className="m-actions-row">
           <button type="button" className="btn btn-ghost" onClick={() => window.aquamate.testReminder()} disabled={reminderActive}>
             Remind me now
+          </button>
+          <button
+            type="button"
+            className={`btn btn-ghost${relaxing ? ' is-on' : ''}`}
+            aria-pressed={relaxing}
+            onClick={() => window.aquamate.setRelax(!relaxing)}
+          >
+            {relaxing ? 'Wake up' : 'Relax 🌿'}
           </button>
           {enabled &&
             (pausedUntil ? (

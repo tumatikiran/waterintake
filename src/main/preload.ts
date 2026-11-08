@@ -18,6 +18,7 @@ const api: AquaMateApi = {
   logGlass: () => ipcRenderer.invoke('glass:log'),
   pause: (minutes) => ipcRenderer.send('reminders:pause', minutes),
   resume: () => ipcRenderer.send('reminders:resume'),
+  setRelax: (on) => ipcRenderer.send('relax:set', on === true),
 
   characters: {
     import: () => ipcRenderer.invoke('characters:import'),
@@ -30,6 +31,7 @@ const api: AquaMateApi = {
 
   // ---------------------------------------------------------------- overlay
   onReminderStart: (cb: (ctx: ReminderContext) => void) => subscribe<[ReminderContext]>('reminder:start', cb),
+  onRelax: (cb: (ctx: ReminderContext | null) => void) => subscribe<[ReminderContext | null]>('relax', cb),
   mascotReady: () => ipcRenderer.send('mascot:ready'),
   /** Where the reminder card is (window-relative CSS px), or null when hidden. */
   setHitRegion: (region: HitRegion | null) => ipcRenderer.send('mascot:hit-region', region),

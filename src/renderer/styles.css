@@ -50,6 +50,9 @@ html[data-view='mascot'], html[data-view='mascot'] body { background: transparen
   transform: rotate(45deg);
   border-radius: 0 4px 0 0;
 }
+/* Relax mode: the companion is in the middle of the screen (sitting, then standing up). */
+.stage[data-phase='relax'] .reminder-card { right: calc(50% + 70px); bottom: 100px; }
+.stage[data-phase='wake'] .reminder-card { right: calc(50% + 70px); }
 .reminder-card.is-visible {
   opacity: 1;
   transform: none;
@@ -58,7 +61,6 @@ html[data-view='mascot'], html[data-view='mascot'] body { background: transparen
 }
 
 .reminder-text { margin: 0 22px 0 0; font-size: 16px; font-weight: 650; line-height: 1.35; animation: text-in 260ms ease; }
-.reminder-detail { margin: 6px 0 0; font-size: 13px; color: var(--ink-soft); }
 .reminder-actions { display: flex; gap: 8px; margin-top: 14px; }
 
 .card-close {
@@ -77,8 +79,9 @@ html[data-view='mascot'], html[data-view='mascot'] body { background: transparen
 .card-close:hover { background: var(--blue-100); color: var(--blue-700); }
 .card-close:focus-visible { outline: 3px solid rgba(47, 128, 237, 0.45); }
 
-.card-progress { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
-.card-progress-text { margin: 8px 0 0; font-size: 13px; color: var(--ink-soft); }
+.card-progress { margin-top: 10px; }
+.card-drops { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.card-progress-text { margin: 0; font-size: 13px; color: var(--ink-soft); }
 .drop { width: 12px; height: 16px; fill: #d6e6fa; transition: fill 200ms ease; }
 .drop.is-filled { fill: var(--blue-500); }
 

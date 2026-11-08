@@ -62,7 +62,7 @@ export function AboutPanel({ state }: { state: AppState }) {
             Your settings, today's count and custom characters stay on this {mobile ? 'phone' : 'computer'}, in{' '}
             <code className="path">{state.app.dataPath}</code>.
           </li>
-          <li>Upload any rigged .glb character. Animations named Idle, Walk, Wave, Drink, Happy, Sad and SadWalk are used directly; others get stand-ins.</li>
+          <li>Upload any rigged .glb character. Animations named Idle, Walk, Wave, Drink, Happy, Sad, SadWalk, Run, SitDown, Relax and StandUp are used directly; others get stand-ins.</li>
         </ul>
         <p className="muted">MIT licensed. Desktop-window techniques adapted from sharada-dev/hydrate-buddy (MIT).</p>
       </section>

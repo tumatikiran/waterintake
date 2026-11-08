@@ -1,5 +1,6 @@
 /**
- * Writes assets/models/human-character.glb, the bundled default companion,
+ * Writes the bundled companions (assets/models/human-character.glb and
+ * human-character-female.glb),
  * using the same generator as the in-app character creator
  * (src/renderer/character/procedural.ts, loaded through Vite's module runner).
  *
@@ -32,9 +33,15 @@ const { module: procedural } = await runnerImport(resolve(root, 'src/renderer/ch
 const { module: recipes } = await runnerImport(resolve(root, 'src/shared/recipe.ts'), { configFile: false, logLevel: 'error' });
 const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
 
-const { root: model, clips } = procedural.buildCharacter(recipes.DEFAULT_RECIPE);
-const glb = await new GLTFExporter().parseAsync(model, { binary: true, animations: clips });
-const out = resolve(root, 'assets/models/human-character.glb');
-mkdirSync(dirname(out), { recursive: true });
-writeFileSync(out, Buffer.from(glb));
-console.log(`Wrote ${out} (${(glb.byteLength / 1024).toFixed(1)} KB, clips: ${clips.map((c) => c.name).join(', ')})`);
+// One file per built-in character (see BUILTIN_MODELS in src/shared/characters.ts).
+for (const [file, recipe] of [
+  ['human-character.glb', recipes.DEFAULT_RECIPE],
+  ['human-character-female.glb', recipes.FEMALE_RECIPE],
+]) {
+  const { root: model, clips } = procedural.buildCharacter(recipe);
+  const glb = await new GLTFExporter().parseAsync(model, { binary: true, animations: clips });
+  const out = resolve(root, 'assets/models', file);
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, Buffer.from(glb));
+  console.log(`Wrote ${out} (${(glb.byteLength / 1024).toFixed(1)} KB, clips: ${clips.map((c) => c.name).join(', ')})`);
+}
