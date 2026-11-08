@@ -96,11 +96,13 @@ export function createRig(asset: CharacterAssetData): CharacterRig {
   const procedural = meta?.generator === 'aquamate-procedural';
   const all = procedural ? proceduralClips() : asset.animations;
   const handPoses = new Set<string>(Object.values(HAND_POSE_CLIPS));
-  const carry = procedural ? all.find((c) => c.name === HAND_POSE_CLIPS.carry) : undefined;
+  const poses = procedural
+    ? Object.fromEntries(Object.entries(HAND_POSE_CLIPS).map(([pose, name]) => [pose, all.find((c) => c.name === name)]).filter(([, c]) => c))
+    : {};
   const animations = new AnimationController(
     model,
     all.filter((c) => !handPoses.has(c.name)),
-    carry ? { bones: ARM_R_BONES, carry } : undefined,
+    procedural ? { bones: ARM_R_BONES, poses } : undefined,
   );
   const expressions = new ExpressionController(model);
   animations.loop('Idle', { fade: 0 });
@@ -127,7 +129,7 @@ export function createRig(asset: CharacterAssetData): CharacterRig {
     }
     socket.add(grip);
   }
-  const props = new HandProps(grip, (holding, instant) => animations.setHolding(holding, instant));
+  const props = new HandProps(grip, (pose, instant) => animations.setHolding(pose, instant));
   // The tablet appears in the left palm while TakeTablet tips it out and brings it to the mouth.
   const leftHand = procedural ? findBone(model, 'Hand_L') : undefined;
   const tablet = leftHand ? makeTablet() : null;

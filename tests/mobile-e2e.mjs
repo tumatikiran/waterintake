@@ -147,7 +147,8 @@ try {
 
   step('medicine on the phone: add it, it is planned as its own notification, and its button plays "took it"');
   await page.getByRole('tab', { name: 'Reminders' }).click();
-  await page.getByRole('button', { name: '+ Add medicine' }).click();
+  await page.getByRole('button', { name: '+ Add reminder' }).click();
+  await page.getByRole('button', { name: /^Medicine/ }).click();
   const med = page.getByTestId('medicine').first();
   await med.getByLabel('Medicine name').fill('Vitamin D');
   await med.getByLabel('Medicine name').press('Enter');
@@ -182,7 +183,7 @@ try {
 
   step("Today screen: today's medicine checklist, and a card asking for exact alarms when Android doesn't allow them");
   await page.getByRole('tab', { name: 'Today' }).click();
-  const todayMed = page.getByTestId('today-med');
+  const todayMed = page.getByTestId('today-item').filter({ hasText: 'Vitamin D' });
   await todayMed.locator('[data-state=taken]').getByText(/✓ taken /).waitFor();
   assert.equal(await page.getByTestId('exact-alarms-card').count(), 0, 'allowed (or not needed): no card');
   await page.evaluate(() => {
@@ -190,7 +191,7 @@ try {
       checkExactNotificationSetting: async () => ({ exact_alarm: 'denied' }),
       changeExactNotificationSetting: async () => ({ exact_alarm: 'granted' }),
     };
-    window.Capacitor.Plugins.App.notifyListeners('resume', {}); // re-checked when the app comes back
+    document.dispatchEvent(new Event('visibilitychange')); // re-checked when the app comes back (from Android's settings)
   });
   await page.getByTestId('exact-alarms-card').waitFor();
   await shot('m12-today-medicine.png');
@@ -203,7 +204,36 @@ try {
   await med.getByRole('button', { name: 'Delete' }).click();
   await page.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.length === 1));
   await page.getByRole('tab', { name: 'Today' }).click();
-  assert.equal(await page.getByTestId('today-medicine').count(), 0, 'no medicine, no checklist');
+  assert.equal(await page.getByTestId('today-checklist').count(), 0, 'no medicine, no checklist');
+
+  step('a to-do on the phone: its own notification and buttons; "Done" from the notification plays the cheer with the sign');
+  await page.getByRole('tab', { name: 'Reminders' }).click();
+  await page.getByRole('button', { name: '+ Add reminder' }).click();
+  await page.getByRole('button', { name: /^To-do/ }).click();
+  const todo = page.locator('.med[data-type=todo]');
+  await todo.getByLabel('Reminder name').fill('Water the plants');
+  await todo.getByLabel('Reminder name').press('Enter');
+  await page.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.some((r) => r.name === 'Water the plants')));
+  const todoId = (await state()).settings.reminders.find((r) => r.type === 'todo').id;
+  const todoPlan = (await pending()).filter((p) => p.reminderId === todoId);
+  assert.equal(todoPlan[0]?.body, 'Time to: Water the plants');
+  assert.equal(todoPlan[0]?.actionTypeId, 'AQUAMATE_TODO');
+  await page.evaluate(
+    (id) =>
+      window.Capacitor.Plugins.LocalNotifications.notifyListeners('localNotificationActionPerformed', {
+        actionId: 'done',
+        notification: { id: 1002, title: 'AquaMate ✅', body: '', extra: { kind: 'reminder', reminderId: id, snoozed: false } },
+      }),
+    todoId,
+  );
+  await page.waitForSelector('[data-testid=reminder-scene].is-open');
+  await page.waitForFunction(() => window.__aquamateDebug?.prop === 'sign', null, { timeout: 20000 });
+  await sceneAnim('Happy', 20000);
+  await sceneClosed(25000);
+  assert.equal((await state()).status.reminders[todoId].done, 1);
+  page.once('dialog', (d) => d.accept());
+  await todo.getByRole('button', { name: 'Delete' }).click();
+  await page.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.length === 1));
 
   step('reminder settings save to app storage and re-plan the notifications');
   await page.getByRole('tab', { name: 'Reminders' }).click();
@@ -300,7 +330,7 @@ try {
   await upload(good);
   await page.getByText('Robo Buddy is now your companion').waitFor({ timeout: 30000 });
   st = await state();
-  assert.deepEqual(st.characters.find((c) => c.name === 'Robo Buddy')?.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'TakeTablet', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
+  assert.deepEqual(st.characters.find((c) => c.name === 'Robo Buddy')?.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'TakeTablet', 'EyeRest', 'StandStretch', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
 
   step('the active character stars on the Today screen and in reminders');
   await page.getByRole('tab', { name: 'Today' }).click();

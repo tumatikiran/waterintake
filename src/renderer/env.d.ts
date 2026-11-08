@@ -15,6 +15,8 @@ declare global {
       expression: string | null;
       /** What the character holds (null: empty hands). */
       prop: string | null;
+      /** What the sign in hand says, if it's a sign. */
+      sign: { emoji: string; text: string } | null;
       bottleLevel: number | null;
       /** Which character is on stage, e.g. "stored:default-female:1" (null while loading). */
       character: string | null;

@@ -37,6 +37,9 @@ export type InteractionName =
   | 'arrive'
   | 'drank'
   | 'tookMedicine'
+  | 'restedEyes'
+  | 'stretched'
+  | 'didIt'
   | 'later'
   | 'skip'
   | 'timeout'
@@ -149,6 +152,48 @@ export const INTERACTIONS: Record<InteractionName, Step[]> = {
     { do: 'wait', seconds: 0.35 },
     { do: 'play', animation: 'Drink' },
     { do: 'face', to: 'user' },
+    { do: 'expression', name: 'joyful' },
+    { do: 'say', message: 'greatJob' },
+    { do: 'loop', animation: 'Happy' },
+    { do: 'wait', seconds: 2.4 },
+    { do: 'say', message: null },
+    { do: 'expression', name: 'happy' },
+    { do: 'walk', to: 'exit' },
+  ],
+  // Eye rest: put the sign down, palms over the eyes for a quiet moment, then off.
+  restedEyes: [
+    { do: 'say', message: 'cheers' },
+    { do: 'prop', id: null },
+    { do: 'face', to: 'front' },
+    { do: 'expression', name: 'relaxed' },
+    { do: 'play', animation: 'EyeRest' },
+    { do: 'face', to: 'user' },
+    { do: 'expression', name: 'happy' },
+    { do: 'say', message: 'greatJob' },
+    { do: 'loop', animation: 'Idle' },
+    { do: 'wait', seconds: 2 },
+    { do: 'say', message: null },
+    { do: 'walk', to: 'exit' },
+  ],
+  // Movement: put the dumbbell down, a big standing stretch, a little cheer, off.
+  stretched: [
+    { do: 'say', message: 'cheers' },
+    { do: 'prop', id: null },
+    { do: 'face', to: 'front' },
+    { do: 'expression', name: 'happy' },
+    { do: 'play', animation: 'StandStretch' },
+    { do: 'face', to: 'user' },
+    { do: 'expression', name: 'joyful' },
+    { do: 'say', message: 'greatJob' },
+    { do: 'play', animation: 'Happy' },
+    { do: 'loop', animation: 'Idle' },
+    { do: 'wait', seconds: 1 },
+    { do: 'say', message: null },
+    { do: 'expression', name: 'happy' },
+    { do: 'walk', to: 'exit' },
+  ],
+  // A to-do (or your own reminder) done: cheer with the sign held high, then off.
+  didIt: [
     { do: 'expression', name: 'joyful' },
     { do: 'say', message: 'greatJob' },
     { do: 'loop', animation: 'Happy' },

@@ -3,7 +3,7 @@ import type { AppState } from '../../shared/types';
 import { RemindersPanel } from './RemindersPanel';
 import { waterReminder } from '../../shared/reminders';
 import { CharacterPanel } from './CharacterPanel';
-import { AboutPanel, ProgressRing, TodayMedicine, scheduleLine, useNow } from './today';
+import { AboutPanel, ProgressRing, TodayChecklist, scheduleLine, useNow } from './today';
 
 type Tab = 'reminders' | 'character' | 'about';
 const TABS: { id: Tab; label: string }[] = [
@@ -62,9 +62,9 @@ function Today({ state }: { state: AppState }) {
   );
 }
 
-function TodayMedicineStrip({ state }: { state: AppState }) {
+function TodayChecklistStrip({ state }: { state: AppState }) {
   const now = useNow();
-  return <TodayMedicine state={state} now={now} />;
+  return <TodayChecklist state={state} now={now} />;
 }
 
 export function SettingsApp() {
@@ -92,7 +92,7 @@ export function SettingsApp() {
         </div>
         <Today state={state} />
       </header>
-      <TodayMedicineStrip state={state} />
+      <TodayChecklistStrip state={state} />
       <nav className="tabs" role="tablist" aria-label="Settings sections">
         {TABS.map((t) => (
           <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={`tab${tab === t.id ? ' is-active' : ''}`} onClick={() => setTab(t.id)}>

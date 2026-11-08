@@ -4,7 +4,7 @@ import type { AppState } from '../../shared/types';
 import { Overlay } from '../Overlay';
 import { RemindersPanel } from '../settings/RemindersPanel';
 import { CharacterPanel } from '../settings/CharacterPanel';
-import { AboutPanel, ProgressRing, TodayMedicine, scheduleLine, useNow } from '../settings/today';
+import { AboutPanel, ProgressRing, TodayChecklist, scheduleLine, useNow } from '../settings/today';
 import { HomeStage } from './HomeStage';
 import { waterReminder } from '../../shared/reminders';
 
@@ -95,7 +95,7 @@ function TodayScreen({ state, paused }: { state: AppState; paused: boolean }) {
           </p>
         </div>
       </section>
-      <TodayMedicine state={state} now={now} />
+      <TodayChecklist state={state} now={now} />
       <div className="m-actions">
         <button
           type="button"

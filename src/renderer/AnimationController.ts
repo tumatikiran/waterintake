@@ -23,11 +23,14 @@ export interface PlayOptions {
  * clip, so walking, idling or sitting don't need a separate "with bottle"
  * version. Roles in ARMS_OWN (drinking, cheering) keep their own arm.
  */
+/** How the right hand holds a prop: carried at the hip, or presented (a sign held up). */
+export type HandPose = 'carry' | 'present';
+
 export interface ArmLayer {
   /** Bone (node) names of the right arm, shoulder to hand. */
   bones: readonly string[];
-  /** The pose played on those bones while holding something (arm tracks only). */
-  carry: THREE.AnimationClip;
+  /** The poses played on those bones while holding something (arm tracks only). */
+  poses: Partial<Record<HandPose, THREE.AnimationClip>>;
 }
 
 /** A role's clip, split into the body and the right arm when there is an arm layer. */
@@ -55,9 +58,9 @@ export class AnimationController {
   private currentRole: AnimationRole | null = null;
   private pending: (() => void) | null = null;
   private disposed = false;
-  private readonly carry: THREE.AnimationAction | null = null;
-  private holding = false;
-  private armBlend = 0; // 0 = the clip's own arm, 1 = the hand pose
+  private readonly poses = new Map<HandPose, THREE.AnimationAction>();
+  private holding: HandPose | null = null;
+  private readonly blend = new Map<HandPose, number>(); // each pose's share of the arm (the rest is the clip's own arm)
 
   constructor(root: THREE.Object3D, clips: THREE.AnimationClip[], arm?: ArmLayer) {
     this.mixer = new THREE.AnimationMixer(root);
@@ -95,13 +98,14 @@ export class AnimationController {
     const missing = ROLE_ORDER.filter((r) => !this.found.includes(r));
     if (missing.length) console.info(`[AquaMate] Using fallbacks for: ${missing.join(', ')}`);
 
-    if (arm) {
-      // Always playing; its weight is the arm blend.
-      const carry = this.mixer.clipAction(new THREE.AnimationClip(arm.carry.name, arm.carry.duration, arm.carry.tracks.filter(isArm)));
-      carry.setLoop(THREE.LoopRepeat, Infinity);
-      carry.play();
-      carry.weight = 0;
-      this.carry = carry;
+    for (const [pose, clip] of Object.entries(arm?.poses ?? {}) as Array<[HandPose, THREE.AnimationClip]>) {
+      // Always playing; its weight is its share of the arm.
+      const action = this.mixer.clipAction(new THREE.AnimationClip(clip.name, clip.duration, clip.tracks.filter(isArm)));
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.play();
+      action.weight = 0;
+      this.poses.set(pose, action);
+      this.blend.set(pose, 0);
     }
 
     this.mixer.addEventListener('finished', (e) => {
@@ -113,9 +117,16 @@ export class AnimationController {
     return this.currentRole;
   }
 
-  /** Whether the hand pose is in use (the character holds a prop). */
-  get carrying(): boolean {
+  /** The hand pose in use (the character holds a prop), or null. */
+  get carrying(): HandPose | null {
     return this.holding;
+  }
+
+  /** How much of the arm the clip itself drives (1 = all of it). */
+  private get ownArm(): number {
+    let sum = 0;
+    for (const w of this.blend.values()) sum += w;
+    return Math.max(0, 1 - sum);
   }
 
   /** Normalized time of the current one-shot (0–1), e.g. how far a Drink has got. */
@@ -125,10 +136,10 @@ export class AnimationController {
     return THREE.MathUtils.clamp(a.time / a.getClip().duration, 0, 1);
   }
 
-  /** The right hand holds something (true) or is free (false). Blends smoothly; `instant` jumps. */
-  setHolding(holding: boolean, instant = false): void {
-    this.holding = holding;
-    if (instant) this.armBlend = this.armTarget();
+  /** The right hand holds something in a pose, or is free (null). Blends smoothly; `instant` jumps. */
+  setHolding(pose: HandPose | null, instant = false): void {
+    this.holding = pose && this.poses.has(pose) ? pose : pose ? (this.poses.has('carry') ? 'carry' : null) : null;
+    if (instant) for (const p of this.poses.keys()) this.blend.set(p, this.armTarget(p));
   }
 
   /** Loops a role (resolves immediately). Calling it again for the same role keeps it going smoothly. */
@@ -159,11 +170,16 @@ export class AnimationController {
 
   update(dt: number): void {
     if (this.disposed) return;
-    if (this.carry) {
-      this.armBlend += (this.armTarget() - this.armBlend) * (1 - Math.exp(-ARM_BLEND_RATE * dt));
+    if (this.poses.size) {
+      const k = 1 - Math.exp(-ARM_BLEND_RATE * dt);
+      for (const [pose, action] of this.poses) {
+        const w = this.blend.get(pose)! + (this.armTarget(pose) - this.blend.get(pose)!) * k;
+        this.blend.set(pose, w);
+        action.weight = w;
+      }
       // Base weights only: cross-fades scale them on top, so the arm's total stays 1.
-      this.carry.weight = this.armBlend;
-      for (const pair of this.actions.values()) if (pair.arm) pair.arm.weight = 1 - this.armBlend;
+      const own = this.ownArm;
+      for (const pair of this.actions.values()) if (pair.arm) pair.arm.weight = own;
     }
     this.mixer.update(dt);
   }
@@ -177,10 +193,10 @@ export class AnimationController {
     this.mixer.uncacheRoot(this.mixer.getRoot());
   }
 
-  private armTarget(): number {
+  private armTarget(pose: HandPose): number {
     const role = this.currentRole;
     const own = role !== null && (ARMS_OWN.includes(role) || ARMS_OWN.includes(this.fallbacks[role] ?? role));
-    return this.holding && !own ? 1 : 0;
+    return this.holding === pose && !own ? 1 : 0;
   }
 
   private *each(pair: Pair): Generator<THREE.AnimationAction> {
@@ -198,7 +214,7 @@ export class AnimationController {
     const parts: Array<[THREE.AnimationAction, THREE.AnimationAction | null | undefined]> = [[pair.body, previous?.body]];
     if (pair.arm) parts.push([pair.arm, previous?.arm]);
     for (const [action, prev] of parts) {
-      const weight = action === pair.arm ? 1 - this.armBlend : 1;
+      const weight = action === pair.arm ? this.ownArm : 1;
       action.reset();
       action.timeScale = timeScale;
       action.setLoop(loop, reps);

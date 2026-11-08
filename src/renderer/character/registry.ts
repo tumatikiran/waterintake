@@ -15,6 +15,8 @@ export type AnimationRole =
   | 'SadWalk'
   | 'Run'
   | 'TakeTablet'
+  | 'EyeRest'
+  | 'StandStretch'
   | 'SitDown'
   | 'Relax'
   | 'StandUp'
@@ -52,6 +54,9 @@ export const ANIMATION_ROLES: Record<AnimationRole, RoleSpec> = {
     loop: false,
     seconds: 3,
   },
+  // Breaks: palms over the eyes (eye rest), and a standing stretch (movement).
+  EyeRest: { aliases: ['eyerest', 'palming', 'covereyes', 'resteyes'], fallback: ['Idle'], loop: false, seconds: 4 },
+  StandStretch: { aliases: ['standstretch', 'stretchstanding', 'standingstretch', 'exercise', 'workout'], fallback: ['Happy', 'Idle'], loop: false, seconds: 4 },
   // Relax mode: sit down, breathe calmly while seated, stand back up. Models
   // without them relax standing (Idle) with their eyes closed.
   SitDown: { aliases: ['sitdown', 'standtosit', 'sittingdown'], fallback: ['Idle'], loop: false, seconds: 1.2 },
@@ -73,7 +78,7 @@ export const ROLE_ORDER = Object.keys(ANIMATION_ROLES) as AnimationRole[];
  * drinking brings the bottle to the mouth, cheering throws both arms up.
  * Every other role uses the hand pose (carrying) while holding something.
  */
-export const ARMS_OWN: readonly AnimationRole[] = ['Drink', 'Happy', 'TakeTablet'];
+export const ARMS_OWN: readonly AnimationRole[] = ['Drink', 'Happy', 'TakeTablet', 'EyeRest', 'StandStretch'];
 
 // --------------------------------------------------------------- expressions
 /** A face "muscle" driven by morph targets. */

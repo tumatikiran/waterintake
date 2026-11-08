@@ -21,6 +21,8 @@ const ROLE_LABELS: Record<AnimationRole, string> = {
   SadWalk: 'Sad walk',
   Run: 'Run',
   TakeTablet: 'Take tablet',
+  EyeRest: 'Rest eyes',
+  StandStretch: 'Stretch (standing)',
   SitDown: 'Sit down',
   Relax: 'Relax',
   StandUp: 'Stand up',

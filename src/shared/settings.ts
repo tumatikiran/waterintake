@@ -95,16 +95,18 @@ export function withReminderPatch(current: Settings, id: string, patch: Record<s
   return sanitizeSettings({ ...current, reminders });
 }
 
-/** Adds a new reminder of a type (singleton types can't be added twice). Returns the settings unchanged when it can't. */
+/** Adds a new reminder of a type (singleton types at most once, with the type's id). Returns the settings unchanged when it can't. */
 export function withReminderAdded(current: Settings, type: ReminderTypeId, id: string): Settings {
   const def = REMINDER_TYPES[type];
-  if (!def || def.singleton || current.reminders.length >= LIMITS.reminders || current.reminders.some((r) => r.id === id)) return current;
-  return sanitizeSettings({ ...current, reminders: [...current.reminders, def.create(id)] });
+  if (!def || current.reminders.length >= LIMITS.reminders) return current;
+  const rid = def.singleton ? def.id : id;
+  if (current.reminders.some((r) => r.id === rid || (def.singleton && r.type === type))) return current;
+  return sanitizeSettings({ ...current, reminders: [...current.reminders, def.create(rid)] });
 }
 
 /** Removes a reminder (the built-in water reminder can only be turned off). */
 export function withReminderRemoved(current: Settings, id: string): Settings {
   const r = current.reminders.find((x) => x.id === id);
-  if (!r || REMINDER_TYPES[r.type].singleton) return current;
+  if (!r || REMINDER_TYPES[r.type].builtin) return current;
   return { ...current, reminders: current.reminders.filter((x) => x.id !== id) };
 }

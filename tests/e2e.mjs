@@ -310,7 +310,7 @@ try {
   st = await state();
   const robo = st.characters.find((c) => c.name === 'Robo Buddy');
   assert.ok(robo && robo.kind === 'uploaded');
-  assert.deepEqual(robo.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'TakeTablet', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
+  assert.deepEqual(robo.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'TakeTablet', 'EyeRest', 'StandStretch', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
   assert.equal(st.settings.characterId, robo.id);
   await settings.locator('.preview-loading').waitFor({ state: 'detached', timeout: 15000 });
   await settings.getByRole('button', { name: 'Drink' }).click();
@@ -464,7 +464,8 @@ try {
 
   step('medicine: add a reminder in Settings → Reminders, with a name, dose and time');
   await settings.getByRole('tab', { name: 'Reminders' }).click();
-  await settings.getByRole('button', { name: '+ Add medicine' }).click();
+  await settings.getByRole('button', { name: '+ Add reminder' }).click();
+  await settings.getByRole('button', { name: /^Medicine/ }).click();
   const med = settings.getByTestId('medicine').first();
   await med.waitFor();
   await med.getByLabel('Medicine name').fill('Vitamin D');
@@ -482,7 +483,7 @@ try {
   assert.deepEqual([medSaved.repeatEveryMinutes, medSaved.repeatTimes], [10, 3], '"remind again until taken" is on by default');
   assert.ok((await state()).status.reminders[medId].nextAt, 'scheduled');
   step("Today's medicine strip: the dose is due now, with “Took it”");
-  const todayMed = settings.getByTestId('today-med');
+  const todayMed = settings.getByTestId('today-item').filter({ hasText: 'Vitamin D' });
   await todayMed.locator('[data-state=due]').getByText('due now').waitFor();
   assert.equal(await todayMed.getByRole('button', { name: 'Took it' }).count(), 1);
   await med.scrollIntoViewIfNeeded();
@@ -512,7 +513,7 @@ try {
   assert.equal(medStatus.done, 1);
   assert.equal(medStatus.times.length, 1);
   assert.equal((await state()).status.glassesToday, glassesBefore, 'a sip, not a glass');
-  await med.getByTestId('medicine-status').getByText(/^Taken today at /).waitFor();
+  await med.getByTestId('reminder-status').getByText(/Taken today at /).waitFor();
   await todayMed.locator('[data-state=taken]').getByText(/✓ taken /).waitFor();
   assert.equal(await todayMed.getByRole('button', { name: 'Took it' }).count(), 0, 'nothing left to take today');
   await settings.screenshot({ path: join(OUT, '15-today-medicine.png') });
@@ -522,6 +523,83 @@ try {
   await med.getByRole('button', { name: 'Delete' }).click();
   await settings.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.length === 1));
   assert.equal(await settings.getByTestId('medicine').count(), 0);
+
+  // ---------------------------------------------------- more reminder types
+  const addReminder = async (kind) => {
+    await settings.getByRole('button', { name: '+ Add reminder' }).click();
+    await settings.getByRole('button', { name: new RegExp(`^${kind}`) }).click();
+  };
+  const editor = (type) => settings.locator(`.med[data-type=${type}]`);
+  /** Shows a reminder with "Try it now", checks what's carried and said, answers it, and checks the "done" animation. */
+  const tryReminder = async (type, { prop, text, button, anim, sign }) => {
+    await editor(type).getByRole('button', { name: 'Try it now' }).click();
+    await phase('arrive');
+    await waitDebug(() => window.__aquamateDebug.walking, null, 15000);
+    assert.equal((await debug()).prop, prop, `${type} carries a ${prop}`);
+    await phase('waiting', 20000);
+    await card.getByText(text).waitFor();
+    if (sign) assert.deepEqual(await mascot.evaluate(() => window.__aquamateDebug.sign), sign, `${type}: what the sign says`);
+    await shot(`16-${type}-reminder.png`);
+    const before = (await state()).status.reminders[(await state()).settings.reminders.find((r) => r.type === type).id].done;
+    await card.getByRole('button', { name: button }).click();
+    await waitAnim(anim, 15000);
+    await sleep(1200);
+    await shot(`17-${type}-done.png`);
+    await phase('hidden', 40000);
+    const id = (await state()).settings.reminders.find((r) => r.type === type).id;
+    assert.equal((await state()).status.reminders[id].done, before + 1, `${type}: logged as done`);
+  };
+
+  step('eye rest: added once (the menu then says "Already added"), every 20 minutes inside active hours');
+  await addReminder('Eye rest');
+  await editor('eyeRest').waitFor();
+  const eyes = (await state()).settings.reminders.find((r) => r.type === 'eyeRest');
+  assert.deepEqual([eyes.id, eyes.intervalMinutes], ['eyeRest', 20]);
+  await settings.getByRole('button', { name: '+ Add reminder' }).click();
+  assert.equal(await settings.getByRole('button', { name: /^Eye rest/ }).isDisabled(), true);
+  await settings.getByRole('button', { name: '+ Add reminder' }).click();
+
+  step('eye rest reminder: carries a "Rest your eyes" sign held up; "I Rested My Eyes" covers the eyes with the palms');
+  await tryReminder('eyeRest', { prop: 'sign', sign: { emoji: '👀', text: 'Rest your eyes' }, text: /Time to rest your eyes/, button: 'I Rested My Eyes', anim: 'EyeRest' });
+
+  step('movement reminder: carries a dumbbell; "I Stretched" puts it down for a standing stretch');
+  await addReminder('Movement');
+  await editor('movement').waitFor();
+  await tryReminder('movement', { prop: 'dumbbell', text: /Time to stand up and stretch/, button: 'I Stretched', anim: 'StandStretch' });
+
+  step('to-do reminder: your title on the sign; "Done" cheers with the sign held high');
+  await addReminder('To-do');
+  await editor('todo').getByLabel('Reminder name').fill('Water the plants');
+  await editor('todo').getByLabel('Reminder name').press('Enter');
+  await settings.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.some((r) => r.name === 'Water the plants')));
+  await tryReminder('todo', { prop: 'sign', sign: { emoji: '✅', text: 'Water the plants' }, text: 'Time to: Water the plants ✅', button: 'Done', anim: 'Happy' });
+
+  step('custom reminder: your emoji and title, at set times; it joins the Today checklist');
+  await addReminder('Custom');
+  const custom = editor('custom');
+  await custom.getByLabel('Reminder name').fill('Call mom');
+  await custom.getByLabel('Reminder name').press('Enter');
+  await custom.getByRole('button', { name: 'Emoji 📞' }).click();
+  await custom.getByRole('radio', { name: 'At set times' }).click();
+  await custom.getByLabel('Time 1').fill(hhmm());
+  await settings.waitForFunction(() =>
+    window.aquamate.getState().then((s) => s.settings.reminders.some((r) => r.type === 'custom' && r.emoji === '📞' && r.scheduleKind === 'times' && r.name === 'Call mom')),
+  );
+  await settings.getByTestId('today-item').filter({ hasText: 'Call mom' }).locator('[data-state=due]').waitFor();
+  await custom.scrollIntoViewIfNeeded();
+  await settings.screenshot({ path: join(OUT, '18-your-reminders.png') });
+  await tryReminder('custom', { prop: 'sign', sign: { emoji: '📞', text: 'Call mom' }, text: '📞 Call mom', button: 'Done', anim: 'Happy' });
+  await settings.getByTestId('today-item').filter({ hasText: 'Call mom' }).locator('[data-state=taken]').getByText(/✓ done /).waitFor();
+
+  step('the new reminders are saved, and deleting them leaves water');
+  const saved4 = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders.map((r) => r.type);
+  assert.deepEqual(saved4, ['water', 'eyeRest', 'movement', 'todo', 'custom']);
+  for (const type of ['custom', 'todo', 'movement', 'eyeRest']) {
+    settings.once('dialog', (d) => d.accept());
+    await editor(type).getByRole('button', { name: 'Delete' }).click();
+    await editor(type).waitFor({ state: 'detached' });
+  }
+  assert.deepEqual((await state()).settings.reminders.map((r) => r.type), ['water']);
 
   assert.deepEqual(errors, [], 'no renderer errors');
   console.log('\n✅ AquaMate end-to-end tests passed');

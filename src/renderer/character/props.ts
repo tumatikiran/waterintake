@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { WaterBottle } from './WaterBottle';
-import type { PropName } from '../../shared/reminders';
+import type { PropName, SignLabel } from '../../shared/reminders';
+import type { HandPose } from '../AnimationController';
 
 /**
  * Things the companion can hold. A reminder decides what (if anything) is in
- * the hand: a water bottle for water, later a pill bottle for medicine. The
- * companion's own clips are prop-free; holding a prop switches the right arm
- * to a carrying pose (see AnimationController).
+ * the hand: a water bottle, a pill bottle, a dumbbell, or a sign with a label.
+ * The companion's own clips are prop-free; holding a prop switches the right
+ * arm to a hand pose (see AnimationController): carried at the hip, or, for a
+ * sign, held up beside the head.
  *
  * To add a prop: build it here with its origin at the grip point, +Y up
  * (the same convention as the bottle in bottleSpec.ts).
@@ -69,13 +71,95 @@ export function tablet(): SimpleProp {
   ]);
 }
 
-export const PROPS: Record<PropId, () => AnyProp> = {
+/** A small dumbbell, held by the bar (upright in the carrying hand). */
+function dumbbell(): SimpleProp {
+  const plate = () => new THREE.CylinderGeometry(0.075, 0.075, 0.05, 20);
+  return build('dumbbell', [
+    [new THREE.CylinderGeometry(0.02, 0.02, 0.26, 12), '#b9c3d0', { metalness: 0.4, roughness: 0.35 }],
+    [plate(), '#e05a4f', { roughness: 0.5 }, [0, 0.105, 0]],
+    [plate(), '#e05a4f', { roughness: 0.5 }, [0, -0.105, 0]],
+  ]);
+}
+
+/** Draws a sign's face: an emoji and a short text, wrapped onto two lines at most. */
+function signTexture(label: SignLabel): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null; // no canvas (generating models in Node)
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 340;
+  const g = canvas.getContext('2d');
+  if (!g) return null;
+  g.fillStyle = '#ffffff';
+  g.beginPath();
+  g.roundRect(8, 8, 496, 324, 36);
+  g.fill();
+  g.lineWidth = 12;
+  g.strokeStyle = '#2f80ed';
+  g.stroke();
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = '118px system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  g.fillText(label.emoji, 256, 104);
+  g.fillStyle = '#13233a';
+  g.font = '700 66px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const words = label.text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  for (const w of words) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && g.measureText(`${last} ${w}`).width <= 440) lines[lines.length - 1] = `${last} ${w}`;
+    else lines.push(w);
+  }
+  if (lines.length > 2) lines.splice(2, lines.length, `${lines[1]}…`);
+  lines.forEach((line, i) => {
+    let l = line;
+    while (g.measureText(l).width > 450 && l.length > 1) l = `${l.slice(0, -2)}…`;
+    g.fillText(l, 256, (lines.length === 1 ? 252 : 216) + i * 70);
+  });
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/** Where the sign's board sits relative to the hand: up, and out to the side so it doesn't cover the face. */
+const BOARD = { w: 0.72, h: 0.48, x: -0.3, y: 0.36 };
+
+/** A sign on a stick, its face towards whoever the character faces; held up beside the head. */
+function sign(label: SignLabel = { emoji: '⭐', text: '' }): SimpleProp {
+  const prop = build('sign', [
+    [new THREE.CylinderGeometry(0.014, 0.014, 0.3, 10), '#b48a5a', { roughness: 0.7 }, [0, 0.1, 0]],
+    // A crossbar from the stick to the board's middle, behind it.
+    [new THREE.BoxGeometry(Math.abs(BOARD.x) + 0.03, 0.03, 0.03), '#b48a5a', { roughness: 0.7 }, [BOARD.x / 2, BOARD.y - BOARD.h / 2 + 0.03, -0.02]],
+    [new THREE.BoxGeometry(BOARD.w, BOARD.h, 0.014), '#e8edf3', { roughness: 0.6 }, [BOARD.x, BOARD.y, -0.006]],
+  ]);
+  const tex = signTexture(label);
+  if (tex) {
+    const faceGeo = new THREE.PlaneGeometry(BOARD.w - 0.01, BOARD.h - 0.01);
+    // Unlit, like paper in daylight: the label reads clearly whatever the light.
+    const faceMat = new THREE.MeshBasicMaterial({ map: tex });
+    const face = new THREE.Mesh(faceGeo, faceMat);
+    face.position.set(BOARD.x, BOARD.y, 0.002);
+    face.frustumCulled = false;
+    prop.object.add(face);
+    const dispose = prop.dispose;
+    return { ...prop, dispose: () => (dispose(), faceGeo.dispose(), faceMat.dispose(), tex.dispose()) };
+  }
+  return prop;
+}
+
+type NotBottle = SimpleProp & { id: Exclude<PropId, 'waterBottle'> };
+export const PROPS: Record<PropId, (label?: SignLabel) => AnyProp> = {
   waterBottle: () => {
     const bottle = new WaterBottle();
     return { id: 'waterBottle', object: bottle.object, bottle, dispose: () => bottle.dispose() };
   },
-  pillBottle: pillBottle as () => SimpleProp & { id: 'pillBottle' },
+  pillBottle: pillBottle as () => NotBottle,
+  dumbbell: dumbbell as () => NotBottle,
+  sign: sign as (label?: SignLabel) => NotBottle,
 };
+
+/** How each prop is held. */
+export const PROP_POSE: Record<PropId, HandPose> = { waterBottle: 'carry', pillBottle: 'carry', dumbbell: 'carry', sign: 'present' };
 
 /** How long a prop takes to appear or be put away (seconds). */
 const SHOW_SECONDS = 0.28;
@@ -92,7 +176,7 @@ export class HandProps {
 
   constructor(
     private readonly grip: THREE.Object3D | null,
-    private readonly onHolding: (holding: boolean, instant: boolean) => void,
+    private readonly onHolding: (pose: HandPose | null, instant: boolean) => void,
   ) {}
 
   /** False when the model has no hand bone to hold things with. */
@@ -108,19 +192,30 @@ export class HandProps {
     return this.current;
   }
 
-  /** Puts a prop in the hand (null: empty hand). Showing the one already held keeps it as it is. */
-  show(id: PropId | null, instant = false): void {
-    if (!this.grip || id === this.held) {
+  /** What the sign in hand says, if any. */
+  get label(): SignLabel | null {
+    return this.held === 'sign' ? this.signLabel : null;
+  }
+  private signLabel: SignLabel | null = null;
+
+  /**
+   * Puts a prop in the hand (null: empty hand); a sign shows `label`. Showing
+   * what's already held (the same sign) keeps it as it is.
+   */
+  show(id: PropId | null, instant = false, label?: SignLabel): void {
+    const same = id === this.held && (id !== 'sign' || JSON.stringify(label ?? null) === JSON.stringify(this.signLabel));
+    if (!this.grip || same) {
       if (instant) this.finish();
       return;
     }
     if (this.current) this.leaving.push({ prop: this.current, t: instant ? 0 : this.t });
-    this.current = id ? PROPS[id]() : null;
+    this.current = id ? PROPS[id](label) : null;
+    this.signLabel = id === 'sign' ? (label ?? null) : null;
     if (this.current) {
       this.t = instant ? 1 : 0;
       this.grip.add(this.current.object);
     }
-    this.onHolding(this.current !== null, instant);
+    this.onHolding(this.current ? PROP_POSE[this.current.id] : null, instant);
     if (instant) this.finish();
     this.apply();
   }

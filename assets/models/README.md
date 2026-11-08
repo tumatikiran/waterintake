@@ -19,14 +19,15 @@ npm run generate:model
 | --- | --- |
 | Rig | 18 bones (`Root`, `Hips`, `Spine`, `Chest`, `Neck`, `Head`, `UpperArm_L/R`, `LowerArm_L/R`, `Hand_L/R`, `UpperLeg_L/R`, `LowerLeg_L/R`, `Foot_L/R`) and one skinned mesh per material |
 | Face | A `Face` mesh with morph targets `happy`, `sad`, `blink` and `open` (mouth open: asleep, yawning) |
-| Animations | `Idle`, `Walk`, `Wave` (left hand), `Drink` (IK-baked, the cap meets the mouth), `Happy`, `Sad`, `SadWalk`, `Run`, `TakeTablet` (tip a tablet from the pill bottle into the left hand, bring it to the mouth, swallow), and for Relax mode `SitDown`, `Relax` (cross-legged, hands on the knees, slow breathing), `StandUp`, `Doze` (asleep: deeper breathing, head down, a little nod) and `Stretch` (seated, arms overhead, on waking). All are empty-handed except `Drink` and `TakeTablet` |
-| Hand pose | `HandCarry`: right arm only, carrying something upright. Not an animation of its own: while the character holds a prop, it replaces the right arm of whatever is playing (except `Drink`, `Happy` and `TakeTablet`, which move the arm themselves) |
+| Animations | `Idle`, `Walk`, `Wave` (left hand), `Drink` (IK-baked, the cap meets the mouth), `Happy`, `Sad`, `SadWalk`, `Run`, `TakeTablet` (tip a tablet from the pill bottle into the left hand, bring it to the mouth, swallow), `EyeRest` (palms over the eyes), `StandStretch` (arms overhead, bend to each side), and for Relax mode `SitDown`, `Relax` (cross-legged, hands on the knees, slow breathing), `StandUp`, `Doze` (asleep: deeper breathing, head down, a little nod) and `Stretch` (seated, arms overhead, on waking). All are empty-handed except `Drink` and `TakeTablet` |
+| Hand poses | `HandCarry` (carrying something upright at the hip) and `HandPresent` (holding a sign up beside the head): right arm only. Not animations of their own: while the character holds a prop, the prop's pose replaces the right arm of whatever is playing (except `Drink`, `Happy`, `TakeTablet`, `EyeRest` and `StandStretch`, which move the arm themselves) |
 | Metadata | glTF `extras.aquamate` on the root node: body height for scaling, walk speeds that match each walk's stride, the part of the Drink clip where the bottle empties, and where the bottle sits in `Hand_R` |
 
 Props aren't part of the file. The app puts them in the right hand at
 runtime (`src/renderer/character/props.ts`) when a reminder needs one: the
-water bottle (whose level goes down as they drink) or the pill bottle, with a
-tablet that appears in the left hand while taking it. Characters made by older versions of the creator always get
+water bottle (whose level goes down as they drink), the pill bottle (with a
+tablet that appears in the left hand while taking it), a dumbbell, or a sign
+whose label (emoji and text) is drawn at runtime. Characters made by older versions of the creator always get
 the current clips when they load, so their hands are free too.
 
 ## A production character

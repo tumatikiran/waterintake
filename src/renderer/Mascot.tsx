@@ -132,8 +132,8 @@ export function Mascot({ source, onActor, layout = DESKTOP_STAGE, debugName = '_
           m.walk = { to, speed: rig.speed(role) * timeScale, resolve };
         });
       },
-      prop(id) {
-        rig.props.show(id);
+      prop(id, label) {
+        rig.props.show(id, false, label);
       },
       face(to) {
         m.target = FACE[to];
@@ -200,6 +200,7 @@ export function Mascot({ source, onActor, layout = DESKTOP_STAGE, debugName = '_
       animation: rig?.animations.playing ?? null,
       expression: rig?.expressions.expression ?? null,
       prop: rig?.props.held ?? null,
+      sign: rig?.props.label ?? null,
       bottleLevel: rig?.bottle?.waterLevel ?? null,
       character: loaded?.key ?? null,
     };

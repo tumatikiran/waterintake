@@ -24,6 +24,10 @@ reminder rules and screens.
 | --- | --- | --- |
 | ![Medicine reminder](docs/medicine.png) | ![Taking a tablet](docs/taking-medicine.png) | ![Medicine settings](docs/settings-medicine.png) |
 
+| Eye rest | Movement | To-do | Your reminders |
+| --- | --- | --- | --- |
+| ![Eye rest reminder with a sign](docs/eye-rest.png) | ![Standing stretch](docs/movement.png) | ![To-do sign](docs/todo.png) | ![Reminder settings](docs/settings-your-reminders.png) |
+
 | Settings | Character creator | Your own characters |
 | --- | --- | --- |
 | ![Reminder settings](docs/settings-reminders.png) | ![Character creator](docs/character-creator.png) | ![Character gallery](docs/settings-character.png) |
@@ -41,7 +45,7 @@ shows through.</sub>
   makes him lift it to his mouth and drink, eyes closed, as the water level
   drops. Then he cheers.
 - **Medicine reminders** 💊: add as many as you need in **Settings →
-  Reminders → Medicine**, each with a name, dose, notes, one or more times
+  Reminders → Your reminders → + Add reminder**, each with a name, dose, notes, one or more times
   and the days you take it. Your companion walks in carrying an amber pill
   bottle; **I Took It** makes them tip a tablet into their hand, take it,
   wash it down with a sip of water and cheer. If you don't answer they come
@@ -49,9 +53,23 @@ shows through.</sub>
   default). Medicine wakes your companion from Relax mode, and goes first if
   water is due at the same time. A dose counts as taken if you answer up to
   an hour early.
-- **Today's medicine** sits under today's progress: each dose as taken (with
-  the time), due, missed or later, and **Took it** to log one you took
-  without a reminder.
+- **More kinds of reminders**, from the same **+ Add reminder** menu. Each
+  one has the companion carry something that says what it's for:
+  - 👀 **Eye rest** (every 20 minutes by default, the 20-20-20 rule): a
+    "Rest your eyes" sign; **I Rested My Eyes** has them cover their eyes
+    with their palms for a quiet moment.
+  - 🙆 **Movement** (every hour): a dumbbell; **I Stretched** has them put
+    it down and do a standing stretch, arms overhead, bending side to side.
+  - ✅ **To-do** (at set times and days): a sign with your to-do on it
+    ("Water the plants"); **Done** gets a cheer with the sign held high.
+  - ⭐ **Custom**: your own emoji and title, every N minutes or at set times.
+
+  Reminders at set times (medicine, to-dos, timed custom ones) wake your
+  companion from Relax mode; the others wait until you're done. When several
+  are due at once: medicine, to-dos, custom, movement, eye rest, then water.
+- **Today's checklist** sits under today's progress: each medicine dose and
+  timed reminder as taken / done (with the time), due, missed or later, and a
+  button to log one you did without a reminder.
 - **Drink Later** makes him sigh, shake his head and walk slowly away with a
   sad face.
 - You choose how he leaves, whether you drank or not: **across the whole
@@ -335,6 +353,11 @@ This builds both apps, then runs three kinds of tests:
     deleted) and is the one on stage throughout every interaction: walking
     in, waiting, drinking, Drink Later, × and leaving. The Android suite
     checks the same on the Today screen and in the reminder scene.
+  - **Eye rest, movement, to-do and custom:** each is added from the menu
+    (eye rest only once), walks in with its sign or dumbbell and its own
+    wording, plays its "done" animation and is logged; a timed custom
+    reminder joins the Today checklist; all are saved and can be deleted. The
+    Android suite answers a to-do from its notification.
   - **Today's medicine:** the strip shows the dose as due with **Took it**,
     then as taken after the reminder. On Android: the checklist, the
     exact-alarm card appearing and going away once allowed, and water

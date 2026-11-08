@@ -12,8 +12,8 @@ export interface TrayStatus {
   canRelax: boolean;
   /** Reminders that are on, for "Remind me now" (water first). */
   reminders: Array<{ id: string; label: string }>;
-  /** Medicine reminders, for "I took …". */
-  medicine: Array<{ id: string; name: string }>;
+  /** Reminders at set times, for "I took …" / "Done: …" shortcuts. */
+  quick: Array<{ id: string; label: string }>;
 }
 
 export interface TrayActions {
@@ -76,7 +76,7 @@ export class AppTray {
           ? { label: 'Remind me now', submenu: s.reminders.map((r) => ({ label: r.label, click: () => a.remindNow(r.id) })) }
           : { label: 'Remind me now', click: () => a.remindNow() },
         { label: 'I drank a glass 💧', click: () => a.logGlass() },
-        ...s.medicine.map((m) => ({ label: `I took ${m.name} 💊`, click: () => a.logDone(m.id) })),
+        ...s.quick.map((q) => ({ label: q.label, click: () => a.logDone(q.id) })),
         {
           label: 'Relax mode 🌿',
           type: 'checkbox',

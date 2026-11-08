@@ -100,7 +100,11 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
       if (!director) return finish();
       for (const script of t.scripts) {
         setPhase(script);
-        const scene = { leave: leaveFor(result.current ?? ctx.current), prop: ctx.current ? REMINDER_TYPES[ctx.current.reminder.type].prop : null };
+        const scene = {
+          leave: leaveFor(result.current ?? ctx.current),
+          prop: ctx.current ? REMINDER_TYPES[ctx.current.reminder.type].prop : null,
+          sign: ctx.current?.reminder.sign ?? null,
+        };
         if (!(await director.run(script, scene))) return; // something newer took over
       }
       if (machine.current.mode === 'reminding') arrived.current();

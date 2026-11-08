@@ -16,7 +16,7 @@ test('defaults: noon daily, remind again every 10 minutes up to 3 times; it wake
   const m = R.REMINDER_TYPES.medicine.create('m1');
   assert.deepEqual([m.times, m.repeatEveryMinutes, m.repeatTimes], [['12:00'], 10, 3]);
   const def = R.REMINDER_TYPES.medicine;
-  assert.equal(def.duringRelax, 'wake');
+  assert.equal(def.duringRelax(m), 'wake');
   assert.ok(def.priority > R.REMINDER_TYPES.water.priority);
   assert.equal(def.prop, 'pillBottle');
   assert.equal(def.doneScript, 'tookMedicine');

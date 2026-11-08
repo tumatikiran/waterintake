@@ -282,3 +282,17 @@ html[data-view='settings'] .muted { color: var(--muted); }
 .dose.is-due { background: var(--accent-soft); color: var(--accent-ink); }
 .dose.is-missed { background: var(--danger-soft); color: var(--danger); }
 .app > .today-meds { margin: 0 24px 12px; }
+
+/* Your reminders: the Add menu, type tag, emoji picker */
+.add-menu { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.add-option { appearance: none; display: flex; align-items: flex-start; gap: 10px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font: inherit; cursor: pointer; }
+.add-option:hover:not(:disabled) { border-color: var(--accent); }
+.add-option:disabled { opacity: 0.55; cursor: default; }
+.add-option strong { display: block; font-size: 14px; }
+.add-option .hint { margin: 2px 0 0; }
+.add-icon { font-size: 22px; line-height: 1; }
+.type-tag { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.emoji-pick { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; align-items: center; }
+.emoji { appearance: none; width: 32px; height: 32px; border-radius: 9px; border: 1px solid transparent; background: none; font-size: 18px; cursor: pointer; }
+.emoji.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.emoji-input { width: 70px; }

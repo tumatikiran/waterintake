@@ -4,7 +4,7 @@
  * buildCharacter(recipe) returns a real rigged model: one skinned mesh per
  * material on an 18-bone skeleton, a face mesh with happy/sad/blink/open morph
  * targets, and baked animation clips (Idle, Walk, Wave, Drink, Happy, Sad,
- * SadWalk, Run, TakeTablet, and SitDown, Relax, StandUp, Doze and Stretch for Relax mode). The same code produces the bundled default GLB
+ * SadWalk, Run, TakeTablet, EyeRest, StandStretch, and SitDown, Relax, StandUp, Doze and Stretch for Relax mode). The same code produces the bundled default GLB
  * (scripts/generate-placeholder-model.mjs) and characters made in the
  * creator, which are exported to GLB and stored like any uploaded model.
  *
@@ -107,6 +107,9 @@ export const LOCOMOTION = {
  * left hand.
  */
 export const TABLET = { duration: 3.4, pour: 0.8, pourHold: 1.05, toMouth: 1.9, swallow: 2.6, shown: [0.7, 2.05] as const };
+/** Eye rest (palming) and the standing stretch, in seconds. */
+export const EYE_REST = { duration: 4.6, up: 0.7, down: 3.7 };
+export const STAND_STRETCH = { duration: 4.6, keys: [0, 0.8, 1.7, 2.8, 3.7, 4.6] };
 /** Drink clip timing (seconds): lift, drink (the bottle empties), lower, "ahh". */
 export const DRINK = { duration: 4.4, liftEnd: 0.8, drinkEnd: 3.1, lowerEnd: 3.9 };
 /**
@@ -622,6 +625,11 @@ class Baker {
     this.root.updateMatrixWorld(true);
   }
 
+  /** The skeleton, for computing IK targets from the current pose. */
+  bonesForKeys(): Bones {
+    return this.bones;
+  }
+
   /**
    * Taking a tablet, as key poses: tipping the pill bottle over the open left
    * hand, the left hand at the mouth, a swallow with the head back. The right
@@ -736,7 +744,7 @@ const HOLD_R = { UpperArm_R: [-0.12, 0, -0.1] as Vec3, LowerArm_R: [-0.95, 0, 0]
  */
 export const ARM_R_BONES = ['UpperArm_R', 'LowerArm_R', 'Hand_R'] as const;
 /** Hand-pose clips (right arm only), by pose. Not animation roles: they never play on their own. */
-export const HAND_POSE_CLIPS = { carry: 'HandCarry' } as const;
+export const HAND_POSE_CLIPS = { carry: 'HandCarry', present: 'HandPresent' } as const;
 export type HandPose = keyof typeof HAND_POSE_CLIPS;
 
 const idleFrame = (w: number): Frame => ({
@@ -985,6 +993,51 @@ function bakeClips(b: Baker): THREE.AnimationClip[] {
     b.blend(tablet.swallow, carrying, range(t, T.swallow, T.duration));
   });
 
+  // Standing key poses: a frame, then wrists placed by IK (world targets computed from the posed skeleton).
+  type Reach = { L?: (bones: Bones) => THREE.Vector3; R?: (bones: Bones) => THREE.Vector3 };
+  const poles = { L: new THREE.Vector3(0.8, -0.5, 0.1), R: new THREE.Vector3(-0.8, -0.5, 0.1) };
+  const standing = (frame: Frame, reach: Reach = {}, pole = poles) => {
+    b.pose(frame);
+    for (const side of ['L', 'R'] as const) {
+      const target = reach[side];
+      if (target) b.reach(side, target(b.bonesForKeys()), pole[side]);
+    }
+    return b.snapshot();
+  };
+  const free = standing(idleFrame(0));
+
+  // Eye rest (the 20-20-20 rule): palms over the eyes, a quiet moment, hands down.
+  const eye = (s: 1 | -1) => (bones: Bones) => bones.Head.localToWorld(new THREE.Vector3(0.085 * s, 1.72 - JOINTS.Head[1], 0.27));
+  const palms = standing({ rot: { ...idleFrame(0).rot, Neck: [0.06, 0, 0], Head: [0.12, 0, 0] } }, { L: eye(1), R: eye(-1) });
+  const palmsBreath = standing({ rot: { ...idleFrame(0).rot, Chest: [-0.03, 0, 0], Neck: [0.05, 0, 0], Head: [0.1, 0, 0] } }, { L: eye(1), R: eye(-1) });
+  const E = EYE_REST;
+  const eyeRestClip = b.bakeWith('EyeRest', E.duration, (t) => {
+    if (t < E.up) return b.blend(free, palms, range(t, 0, E.up));
+    if (t < E.down) return b.blend(palms, palmsBreath, 0.5 - 0.5 * Math.cos((2 * Math.PI * (t - E.up)) / (E.down - E.up)));
+    b.blend(palms, free, range(t, E.down, E.duration));
+  });
+
+  // Standing stretch: arms overhead, bend to one side, then the other, back to standing.
+  const overhead = (s: 1 | -1) => (bones: Bones) => bones[s === 1 ? 'UpperArm_L' : 'UpperArm_R'].getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0.09 * s, 0.48, -0.02));
+  const up = { L: overhead(1), R: overhead(-1) };
+  const upPole = { L: new THREE.Vector3(1, 0.1, -0.3), R: new THREE.Vector3(-1, 0.1, -0.3) };
+  const armsUp = standing({ rot: { Spine: [-0.05, 0, 0], Chest: [-0.06, 0, 0], Head: [-0.22, 0, 0] } }, up, upPole);
+  const bendL = standing({ rot: { Spine: [-0.03, 0, 0.26], Chest: [0, 0, 0.12], Head: [-0.1, 0, 0.1] } }, up, upPole);
+  const bendR = standing({ rot: { Spine: [-0.03, 0, -0.26], Chest: [0, 0, -0.12], Head: [-0.1, 0, -0.1] } }, up, upPole);
+  const K = STAND_STRETCH.keys;
+  const stretchKeys = [free, armsUp, bendL, bendR, armsUp, free];
+  const standStretch = b.bakeWith('StandStretch', STAND_STRETCH.duration, (t) => {
+    const i = Math.min(K.length - 2, K.findIndex((k, j) => t >= k && t <= K[j + 1]));
+    b.blend(stretchKeys[i], stretchKeys[i + 1], range(t, K[i], K[i + 1]));
+  });
+
+  // Hand pose: holding up a sign beside the head.
+  const present = b.bake(HAND_POSE_CLIPS.present, 3, (_t, w) => ({
+    rot: { UpperArm_R: [-0.3 + 0.02 * Math.sin(w), 0, -0.62], LowerArm_R: [-1.95, 0, 0.05] },
+    holding: true,
+  }));
+  present.tracks = present.tracks.filter((t) => ARM_R_BONES.some((bone) => t.name.startsWith(`${bone}.`)));
+
   // Hand pose: carrying something upright in front of the hip, with a little give.
   const carry = b.bake(HAND_POSE_CLIPS.carry, 3, (_t, w) => ({
     rot: { UpperArm_R: [HOLD_R.UpperArm_R[0] + 0.02 * Math.sin(w), 0, HOLD_R.UpperArm_R[2]], LowerArm_R: HOLD_R.LowerArm_R },
@@ -992,7 +1045,7 @@ function bakeClips(b: Baker): THREE.AnimationClip[] {
   }));
   carry.tracks = carry.tracks.filter((t) => ARM_R_BONES.some((bone) => t.name.startsWith(`${bone}.`)));
 
-  return [idle, walk, wave, drink, happy, sad, sadWalk, run, takeTablet, ...bakeRelaxClips(b), carry];
+  return [idle, walk, wave, drink, happy, sad, sadWalk, run, takeTablet, eyeRestClip, standStretch, ...bakeRelaxClips(b), carry, present];
 }
 
 function buildSkeleton(): { bones: Bones; root: THREE.Group } {

@@ -22,7 +22,7 @@ import type { AppState, CharacterInfo, Reminder, ReminderContext, ReminderReason
 import { mergeSettings, sanitizeSettings, withReminderAdded, withReminderPatch, withReminderRemoved } from '../../shared/settings';
 import { mergePlans, planChain, startOfDay, type NextInput, type PlannedReminder, type ScheduleTrigger } from '../../shared/schedule';
 import { dayOf, entryOf, sanitizeDaily, shownToday, withDone, withShown } from '../../shared/daily';
-import { REMINDER_TYPES, WATER_ID, newReminderId, nextTime, typeOf, waterReminder } from '../../shared/reminders';
+import { REMINDER_TYPES, WATER_ID, newReminderId, nextTime, sceneReminder, typeOf, waitsDuringRelax, waterReminder } from '../../shared/reminders';
 import {
   BUILTIN_CHARACTER,
   BUILTIN_CHARACTERS,
@@ -41,6 +41,10 @@ const REMINDER_IDS = { first: 1000, count: 8 }; // the next 8 reminders are sche
 const NOTIFY: Record<ReminderTypeId, { channel: string; channelName: string; description: string; actionType: string }> = {
   water: { channel: 'reminders', channelName: 'Water reminders', description: 'Reminders to drink water', actionType: 'AQUAMATE_REMINDER' },
   medicine: { channel: 'medicine', channelName: 'Medicine reminders', description: 'Reminders to take your medicine', actionType: 'AQUAMATE_MEDICINE' },
+  eyeRest: { channel: 'routine', channelName: 'Routine reminders', description: 'Breaks, movement and your to-dos', actionType: 'AQUAMATE_EYE_REST' },
+  movement: { channel: 'routine', channelName: 'Routine reminders', description: 'Breaks, movement and your to-dos', actionType: 'AQUAMATE_MOVEMENT' },
+  todo: { channel: 'routine', channelName: 'Routine reminders', description: 'Breaks, movement and your to-dos', actionType: 'AQUAMATE_TODO' },
+  custom: { channel: 'routine', channelName: 'Routine reminders', description: 'Breaks, movement and your to-dos', actionType: 'AQUAMATE_CUSTOM' },
 };
 const CHAR_DIR = 'characters';
 
@@ -240,7 +244,8 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
 
   async function setupAndroidNotifications(): Promise<void> {
     if (!native) return;
-    for (const n of Object.values(NOTIFY)) {
+    const channels = [...new Map(Object.values(NOTIFY).map((n) => [n.channel, n])).values()];
+    for (const n of channels) {
       await LocalNotifications.createChannel({
         id: n.channel,
         name: n.channelName,
@@ -328,7 +333,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     // Relaxing: reminders that wait (water) are held back until Relax mode ends; one that came due meanwhile fires then.
     const held = (p: Planned) => {
       const r = settings.reminders.find((x) => x.id === p.reminderId);
-      return relaxHold !== null && p.at < relaxHold && !!r && typeOf(r).duringRelax === 'wait';
+      return relaxHold !== null && p.at < relaxHold && !!r && waitsDuringRelax(r);
     };
     const visible = plans.map((plan) => plan.filter((p) => !held(p)));
     return mergePlans(visible, REMINDER_IDS.count, settings.reminders.map((r) => typeOf(r).planReserve));
@@ -381,7 +386,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     const character = allCharacters().find((c) => c.id === settings.characterId) ?? BUILTIN_CHARACTER;
     const ctx: ReminderContext = {
       reason,
-      reminder: { id: r.id, type: r.type, name: r.name, detail: typeOf(r).describe(r) ?? undefined },
+      reminder: sceneReminder(r),
       userName: settings.userName,
       progress: typeOf(r).progress(r, doneToday(r.id)),
       snoozeMinutes: r.snoozeMinutes,
@@ -411,11 +416,22 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     const extra = (notification.extra ?? {}) as { kind?: string; snoozed?: boolean; reminderId?: string };
     if (extra.kind === 'reminder' && document.visibilityState === 'visible') startReminder(reminderFor(extra.reminderId), extra.snoozed ? 'snoozed' : 'scheduled');
   });
-  void App.addListener('resume', async () => {
-    permission = await checkPermission();
-    exactAlarms = await checkExactAlarms();
-    await refreshPlan();
-  });
+  // Back in the app (for example from Android's notification or "Alarms &
+  // reminders" settings): permissions may have changed, and the plan may be stale.
+  let returning = false;
+  const onReturn = async () => {
+    if (returning) return; // 'resume' and 'visibilitychange' arrive together
+    returning = true;
+    try {
+      permission = await checkPermission();
+      exactAlarms = await checkExactAlarms();
+      await refreshPlan();
+    } finally {
+      returning = false;
+    }
+  };
+  void App.addListener('resume', onReturn);
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void onReturn());
   // Keep "paused until" and the date fresh while the app stays open.
   window.setInterval(() => {
     const before = JSON.stringify(appState().status);
@@ -445,9 +461,10 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       return settings;
     },
     async addReminder(type) {
-      const id = newReminderId(type);
+      const def = REMINDER_TYPES[type];
+      const id = def.singleton ? def.id : newReminderId(type);
       const next = withReminderAdded(settings, type, id);
-      if (next === settings) throw new Error("Can't add another reminder of this kind.");
+      if (next === settings) throw new Error(def.singleton ? `You already have a ${def.label.toLowerCase()} reminder.` : "Can't add more reminders.");
       settings = next;
       await writePref('settings', settings);
       await reschedule('settings', id);

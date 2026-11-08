@@ -15,7 +15,7 @@ import type {
   Settings,
 } from '../shared/types';
 import { mergeSettings, sanitizeSettings, withReminderAdded, withReminderPatch, withReminderRemoved, type SettingsPatch } from '../shared/settings';
-import { REMINDER_TYPES, WATER_ID, newReminderId, typeOf, waterReminder } from '../shared/reminders';
+import { REMINDER_TYPES, WATER_ID, isTimed, newReminderId, sceneReminder, typeOf, waitsDuringRelax, waterReminder } from '../shared/reminders';
 import { startOfDay } from '../shared/schedule';
 import { WindowManager, type View } from './window-manager';
 import { DailyLog, JsonFile } from './stores';
@@ -113,7 +113,7 @@ function main(): void {
       return state === 'idle' || state === 'locked';
     },
     // Some types wait while you relax (water), others wake the companion; "Remind me now" always does.
-    isBusy: (r) => windows.busy || (windows.relaxing && typeOf(r).duringRelax === 'wait'),
+    isBusy: (r) => windows.busy || (windows.relaxing && waitsDuringRelax(r)),
     fire: (r, reason) => startReminder(r, reason),
     changed: () => pushState(),
   });
@@ -161,8 +161,10 @@ function main(): void {
       pausedUntil: state.status.pausedUntil,
       relaxing: state.status.relaxing,
       canRelax: !windows.relaxing && !windows.busy, // nothing else on screen
-      reminders: settings.reminders.filter((r) => r.enabled).map((r) => ({ id: r.id, label: `${typeOf(r).icon} ${r.type === 'water' ? 'Water' : r.name}` })),
-      medicine: settings.reminders.filter((r) => r.type === 'medicine' && r.enabled).map((r) => ({ id: r.id, name: r.name })),
+      reminders: settings.reminders.filter((r) => r.enabled).map((r) => ({ id: r.id, label: `${sceneReminder(r).emoji} ${r.type === 'water' ? 'Water' : r.name}` })),
+      quick: settings.reminders
+        .filter((r) => r.enabled && isTimed(r))
+        .map((r) => ({ id: r.id, label: r.type === 'medicine' ? `I took ${r.name} 💊` : `Done: ${r.name} ${sceneReminder(r).emoji}` })),
     });
   }
 
@@ -171,7 +173,7 @@ function main(): void {
     const character = characters.get(settings.characterId) ?? BUILTIN_CHARACTER;
     return {
       reason,
-      reminder: { id: r.id, type: r.type, name: r.name, detail: typeOf(r).describe(r) ?? undefined },
+      reminder: sceneReminder(r),
       userName: settings.userName,
       progress: typeOf(r).progress(r, log.doneToday(r.id)),
       snoozeMinutes: r.snoozeMinutes,
@@ -249,9 +251,10 @@ function main(): void {
   });
   ipcMain.handle('reminders:add', (e, type: unknown) => {
     if (!fromSettings(e) || typeof type !== 'string' || !(type in REMINDER_TYPES)) throw new Error('Not allowed');
-    const id = newReminderId(type as Reminder['type']);
-    const next = withReminderAdded(settings, type as Reminder['type'], id);
-    if (next === settings) throw new Error("Can't add another reminder of this kind.");
+    const def = REMINDER_TYPES[type as Reminder['type']];
+    const id = def.singleton ? def.id : newReminderId(def.id);
+    const next = withReminderAdded(settings, def.id, id);
+    if (next === settings) throw new Error(def.singleton ? `You already have a ${def.label.toLowerCase()} reminder.` : "Can't add more reminders.");
     saveSettings(next);
     scheduler.sync('settings');
     return { settings, id };

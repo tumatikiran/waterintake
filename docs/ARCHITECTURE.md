@@ -113,14 +113,24 @@ exists. Everything that differs between types lives in one place:
 1. Add the type's id to `ReminderTypeId` and its fields as a new member of
    `Reminder` in `src/shared/types.ts`.
 2. Describe it in `REMINDER_TYPES` (`src/shared/reminders.ts`):
-   - `create` and `sanitize` (defaults and validation)
+   - `builtin` (always there, like water) and `singleton` (at most one, like
+     eye rest), `label`, `icon` and `blurb` (for the **+ Add reminder** menu)
+   - `create` and `sanitize` (defaults and validation; reuse the interval or
+     times field groups if it's scheduled like existing types)
    - `next` (when it fires; pure, unit-tested) and `progress` (a goal, or null)
-   - `prop` (what the companion carries in) and `doneScript` (what "done" plays)
-   - `duringRelax` (`wait` or `wake`), `priority` (who goes first when two are due)
+   - `prop` (what the companion carries in; `'sign'` with `sign(r)` for a
+     label, which needs no new 3D model) and `doneScript` (what "done" plays)
+   - `duringRelax(r)` (`wait` or `wake`), `priority` (who goes first when two
+     are due), `planReserve` (Android notifications it always keeps)
    - button labels and notification text
-3. Give it card wording in `WORDING` (`src/renderer/behavior/messages.ts`).
-4. If it carries something new, add the prop to `PROPS`
+3. Give it card wording in `WORDING` (`src/renderer/behavior/messages.ts`)
+   and a notification channel in `NOTIFY` (`src/renderer/mobile/bridge.ts`).
+4. If it carries something new, add the prop to `PROPS` and `PROP_POSE`
    (`src/renderer/character/props.ts`) and to `PropName`.
+5. If "done" needs its own animation, add the role and its script (see
+   **Add an animation** and **Add an interaction**). The settings card is
+   built from shared parts (interval, times, repeat, snooze) in
+   `RemindersPanel.tsx`.
 
 The scheduler, the daily log, the overlay, the state machine and Android's
 notifications are generic: they ask the type.

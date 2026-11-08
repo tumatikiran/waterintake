@@ -30,6 +30,26 @@ const WORDING: Record<ReminderTypeId, Wording> = {
     cheers: 'Down it goes! 💊',
     done: (r) => `Well done! ${r.reminder.name} taken ✅`,
   },
+  eyeRest: {
+    ask: () => 'Time to rest your eyes 👀 Look at something far away for 20 seconds.',
+    cheers: 'Close your eyes with me… 😌',
+    done: () => 'Ahh, much better. Eyes rested! 👀',
+  },
+  movement: {
+    ask: () => "Time to stand up and stretch 🙆 Let's move a little!",
+    cheers: "Let's stretch! 🙆",
+    done: () => 'Great stretch! Your body thanks you 💪',
+  },
+  todo: {
+    ask: (r) => `Time to: ${r.reminder.name} ✅${r.reminder.detail ? ` (${r.reminder.detail})` : ''}`,
+    cheers: 'On it!',
+    done: (r) => `Done: ${r.reminder.name}. Nice work! 🎉`,
+  },
+  custom: {
+    ask: (r) => `${r.reminder.emoji ?? '⭐'} ${r.reminder.name}`,
+    cheers: 'On it!',
+    done: (r) => `Done! ${r.reminder.emoji ?? '🎉'}`,
+  },
 };
 
 /** Personal, context-aware wording for the reminder card. */

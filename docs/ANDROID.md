@@ -46,6 +46,8 @@ experience without that.
 - **Relax mode:** while you relax on the Today screen, water notifications
   are held back until you finish (for at most an hour when relaxing "until I
   stop", since Relax mode ends if the app is closed). Medicine still arrives.
+- **Eye rest, movement, to-dos and custom reminders** share a "Routine
+  reminders" channel, each with its own **Done** / **Later** buttons.
 - **Medicine:** has its own notification channel ("Medicine reminders") with
   **I took it** / **Later** buttons; its repeats ("remind again until taken")
   are planned ahead, and each kind of reminder keeps room in the 8 planned

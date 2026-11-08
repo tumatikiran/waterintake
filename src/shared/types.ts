@@ -30,7 +30,7 @@ export type IntervalMode = 'fixed' | 'goal';
  * scheduled, what the companion carries, the wording); everything else is
  * generic. Water is the built-in, permanent one.
  */
-export type ReminderTypeId = 'water' | 'medicine';
+export type ReminderTypeId = 'water' | 'medicine' | 'eyeRest' | 'movement' | 'todo' | 'custom';
 
 interface ReminderBase {
   id: string;
@@ -61,7 +61,44 @@ export interface MedicineReminder extends ReminderBase {
   repeatTimes: number; // …this many times (0: don't)
 }
 
-export type Reminder = WaterReminder | MedicineReminder;
+/** Fields of reminders that come every N minutes inside active hours. */
+export interface IntervalFields {
+  intervalMinutes: number;
+  schedule: TimeWindow[];
+}
+
+/** Fields of reminders that come at set times on chosen days. */
+export interface TimesFields {
+  times: string[]; // "HH:MM", sorted
+  days: Weekday[];
+  repeatEveryMinutes: number; // remind again this often until done…
+  repeatTimes: number; // …this many times (0: don't)
+}
+
+/** Breaks for the eyes (the 20-20-20 rule). */
+export interface EyeRestReminder extends ReminderBase, IntervalFields {
+  type: 'eyeRest';
+}
+
+/** Stand up, stretch, move. */
+export interface MovementReminder extends ReminderBase, IntervalFields {
+  type: 'movement';
+}
+
+/** A daily activity or to-do at set times ("Water the plants"). */
+export interface TodoReminder extends ReminderBase, TimesFields {
+  type: 'todo';
+  notes: string;
+}
+
+/** Anything: your own emoji and title, every N minutes or at set times. */
+export interface CustomReminder extends ReminderBase, IntervalFields, TimesFields {
+  type: 'custom';
+  emoji: string;
+  scheduleKind: 'interval' | 'times';
+}
+
+export type Reminder = WaterReminder | MedicineReminder | EyeRestReminder | MovementReminder | TodoReminder | CustomReminder;
 
 /** Choices that apply to every reminder. */
 export interface GeneralSettings {
@@ -138,7 +175,7 @@ export interface Progress {
 export interface ReminderContext {
   reason: ReminderReason;
   /** Which reminder (Relax mode: the water reminder, for wording only). */
-  reminder: { id: string; type: ReminderTypeId; name: string; detail?: string };
+  reminder: { id: string; type: ReminderTypeId; name: string; detail?: string; emoji?: string; sign?: { emoji: string; text: string } };
   userName: string;
   progress: Progress | null;
   snoozeMinutes: number;

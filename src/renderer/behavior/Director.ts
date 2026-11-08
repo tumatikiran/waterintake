@@ -1,5 +1,6 @@
 import type { AnimationRole, Expression } from '../character/registry';
 import type { PropId } from '../character/props';
+import type { SignLabel } from '../../shared/reminders';
 import { INTERACTIONS, type Facing, type Gait, type InteractionName, type Leave, type Mark, type Step } from './interactions';
 import type { MessageKey } from './messages';
 
@@ -7,7 +8,7 @@ import type { MessageKey } from './messages';
 export interface Actor {
   readonly key: string; // which character this actor is
   stage(at?: Mark): void;
-  prop(id: PropId | null): void;
+  prop(id: PropId | null, label?: SignLabel): void;
   walk(to: Mark, style: 'normal' | 'sad', gait: Gait): Promise<void>;
   face(to: Facing): void;
   play(animation: AnimationRole): Promise<void>;
@@ -28,6 +29,8 @@ export const DEFAULT_LEAVE: Leave = { to: 'exitRight', gait: 'walk' };
 export interface Scene {
   leave?: Leave;
   prop?: PropId | null;
+  /** What the reminder's sign says, when its prop is a sign. */
+  sign?: SignLabel | null;
 }
 
 /** Runs interaction scripts. Starting a new one interrupts the current one. */
@@ -54,7 +57,7 @@ export class Director {
     this.token++;
   }
 
-  private exec(step: Step, { leave = DEFAULT_LEAVE, prop = null }: Scene): Promise<void> | void {
+  private exec(step: Step, { leave = DEFAULT_LEAVE, prop = null, sign = null }: Scene): Promise<void> | void {
     const a = this.actor;
     switch (step.do) {
       case 'stage':
@@ -62,7 +65,7 @@ export class Director {
       case 'walk':
         return step.to === 'exit' ? a.walk(leave.to, step.style ?? 'normal', leave.gait) : a.walk(step.to, step.style ?? 'normal', 'walk');
       case 'prop':
-        return a.prop(step.id === 'reminder' ? prop : step.id);
+        return step.id === 'reminder' ? a.prop(prop, sign ?? undefined) : a.prop(step.id);
       case 'face':
         return a.face(step.to);
       case 'play':
