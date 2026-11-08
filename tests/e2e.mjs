@@ -285,7 +285,7 @@ try {
   st = await state();
   const robo = st.characters.find((c) => c.name === 'Robo Buddy');
   assert.ok(robo && robo.kind === 'uploaded');
-  assert.deepEqual(robo.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'SitDown', 'Relax', 'StandUp']);
+  assert.deepEqual(robo.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
   assert.equal(st.settings.characterId, robo.id);
   await settings.locator('.preview-loading').waitFor({ state: 'detached', timeout: 15000 });
   await settings.getByRole('button', { name: 'Drink' }).click();
@@ -392,6 +392,50 @@ try {
   await card.getByRole('button', { name: 'Skip this reminder' }).click();
   await phase('hidden', 40000);
   assert.equal(await settings.getByRole('button', { name: 'Relax 🌿' }).isEnabled(), true);
+
+  const companion = () => mascot.evaluate(() => document.querySelector('[data-testid=stage]').dataset.companion);
+  step('Relax mode dozes off: deeper breathing, head down, mouth slightly open, a floating "zzz"');
+  await settings.evaluate(() => window.aquamate.updateSettings({ relax: { dozeAfterMinutes: 0.05 } })); // 3 s, for the test
+  await settings.getByRole('button', { name: 'Relax 🌿' }).click();
+  await waitAnim('Doze', 30000);
+  await waitDebug(() => window.__aquamateDebug.expression === 'asleep', null, 4000);
+  assert.equal(await companion(), 'sleeping');
+  assert.equal((await debug()).prop, null);
+  await mascot.waitForFunction(() => getComputedStyle(document.querySelector('[data-testid=zzz]')).opacity === '1', null, { timeout: 4000 });
+  await sleep(1500);
+  await mascot.screenshot({ path: join(OUT, '11-dozing.png') });
+
+  step('a reminder wakes the sleeping companion: stretch and yawn, stand up, remind');
+  await testReminder();
+  await phase('wakeFromSleepToRemind');
+  await waitAnim('Stretch', 6000);
+  assert.equal((await debug()).expression, 'yawn');
+  await waitAnim('StandUp', 8000);
+  await phase('waiting', 20000);
+  assert.equal(await companion(), 'reminding');
+  assert.equal((await state()).status.relaxing, false);
+  await card.getByRole('button', { name: 'Skip this reminder' }).click();
+  await phase('hidden', 40000);
+
+  step('turning Relax mode off while asleep: stretch, stand up, leave');
+  await settings.getByRole('button', { name: 'Relax 🌿' }).click();
+  await waitAnim('Doze', 30000);
+  await settings.getByRole('button', { name: 'Stop relaxing' }).click();
+  await phase('wakeFromSleep');
+  await waitAnim('Stretch', 6000);
+  await waitAnim('StandUp', 8000);
+  await phase('hidden', 40000);
+  assert.equal((await waitVisible(false)).visible, false);
+
+  step('"Relax for" ends Relax mode by itself');
+  await settings.evaluate(() => window.aquamate.updateSettings({ relax: { dozeAfterMinutes: 0, durationMinutes: 0.15 } })); // 9 s
+  await settings.getByRole('button', { name: 'Relax 🌿' }).click();
+  await waitAnim('Relax', 30000);
+  await phase('wake', 15000);
+  assert.equal((await state()).status.relaxing, false);
+  assert.equal(await companion(), 'waking', 'never dozed: "Never" means never');
+  await phase('hidden', 40000);
+  await settings.evaluate(() => window.aquamate.updateSettings({ relax: { dozeAfterMinutes: 3, durationMinutes: 0 } }));
 
   assert.deepEqual(errors, [], 'no renderer errors');
   console.log('\n✅ AquaMate end-to-end tests passed');

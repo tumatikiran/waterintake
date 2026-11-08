@@ -16,7 +16,7 @@ const CHANNELS = Object.keys(EXPRESSION_CHANNELS) as ExpressionChannel[];
 export class ExpressionController {
   readonly channels: ExpressionChannel[] = [];
   private readonly bindings: Binding[] = [];
-  private readonly value: Record<ExpressionChannel, number> = { happy: 0, sad: 0, blink: 0 };
+  private readonly value: Record<ExpressionChannel, number> = { happy: 0, sad: 0, blink: 0, open: 0 };
   private target: Partial<Record<ExpressionChannel, number>> = {};
   private name: Expression = 'neutral';
   private rate = 12;

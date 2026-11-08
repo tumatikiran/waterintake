@@ -5,6 +5,7 @@
  */
 import type { AnimationRole, Expression } from '../character/registry';
 import type { PropId } from '../character/props';
+import type { CompanionScript } from '../../shared/companion';
 import type { MessageKey } from './messages';
 
 export type Mark = 'stop' | 'center' | 'exitLeft' | 'exitRight';
@@ -42,13 +43,18 @@ export type InteractionName =
   | 'wake'
   | 'wakeToRemind'
   | 'remindHere'
+  | 'wakeFromSleep'
+  | 'wakeFromSleepToRemind'
+  | 'doze'
   | 'homeIdle'
   | 'homeDrink'
   | 'homePoke'
   | 'homeRelax'
   | 'homeSeated'
   | 'homeWake'
-  | 'homeStandUp';
+  | 'homeStandUp'
+  | 'homeWakeFromSleep'
+  | 'homeStretchUp';
 
 /** Relax mode: settle down on the floor, then let the eyes close. Relaxing is prop-free. */
 const SIT_DOWN: Step[] = [
@@ -67,6 +73,38 @@ const STAND_UP: Step[] = [
   { do: 'wait', seconds: 1 },
   { do: 'play', animation: 'StandUp' },
   { do: 'loop', animation: 'Idle' },
+];
+
+/** Dozed off: still sitting, but deeper and slower; the host shows the "zzz". */
+const DOZE: Step[] = [
+  { do: 'loop', animation: 'Doze', fade: 2.5 },
+  { do: 'expression', name: 'asleep' },
+];
+/** Waking from a nap: a big seated stretch and a yawn first. */
+const STRETCH: Step[] = [
+  { do: 'expression', name: 'yawn' },
+  { do: 'play', animation: 'Stretch' },
+  { do: 'expression', name: 'neutral' },
+];
+/** Up and refreshed: say so, wave, and leave the way the user chose. */
+const REFRESHED_LEAVE: Step[] = [
+  { do: 'expression', name: 'joyful' },
+  { do: 'say', message: 'refreshed' },
+  { do: 'play', animation: 'Wave' },
+  { do: 'expression', name: 'happy' },
+  { do: 'wait', seconds: 0.8 },
+  { do: 'say', message: null },
+  { do: 'walk', to: 'exit' },
+];
+/** Up and refreshed on the Today screen: he stays. */
+const REFRESHED_STAY: Step[] = [
+  { do: 'expression', name: 'joyful' },
+  { do: 'say', message: 'refreshed' },
+  { do: 'play', animation: 'Wave' },
+  { do: 'loop', animation: 'Idle' },
+  { do: 'wait', seconds: 0.8 },
+  { do: 'say', message: null },
+  { do: 'expression', name: 'neutral' },
 ];
 
 /** Walk in carrying the bottle (it shows what the reminder is for), wave, remind. */
@@ -135,19 +173,13 @@ export const INTERACTIONS: Record<InteractionName, Step[]> = {
     { do: 'say', message: null },
   ],
   // Relax mode turned off: get up refreshed, stretch, and leave.
-  wake: [
-    { do: 'say', message: null },
-    ...STAND_UP,
-    { do: 'expression', name: 'joyful' },
-    { do: 'say', message: 'refreshed' },
-    { do: 'play', animation: 'Wave' },
-    { do: 'expression', name: 'happy' },
-    { do: 'wait', seconds: 0.8 },
-    { do: 'say', message: null },
-    { do: 'walk', to: 'exit' },
-  ],
+  wake: [{ do: 'say', message: null }, ...STAND_UP, ...REFRESHED_LEAVE],
+  wakeFromSleep: [{ do: 'say', message: null }, ...STRETCH, ...STAND_UP, ...REFRESHED_LEAVE],
+  // Relaxing long enough: doze off (overlay and Today screen alike).
+  doze: DOZE,
   // A reminder came while relaxing: get up and remind from where he was sitting.
   wakeToRemind: [{ do: 'say', message: null }, ...STAND_UP, ...REMIND],
+  wakeFromSleepToRemind: [{ do: 'say', message: null }, ...STRETCH, ...STAND_UP, ...REMIND],
   // A reminder came while he was still on his way to sit down.
   remindHere: [{ do: 'say', message: null }, ...REMIND],
 
@@ -196,15 +228,10 @@ export const INTERACTIONS: Record<InteractionName, Step[]> = {
   ],
   // Getting up to drink along.
   homeStandUp: [{ do: 'say', message: null }, ...STAND_UP],
-  homeWake: [
-    { do: 'say', message: null },
-    ...STAND_UP,
-    { do: 'expression', name: 'joyful' },
-    { do: 'say', message: 'refreshed' },
-    { do: 'play', animation: 'Wave' },
-    { do: 'loop', animation: 'Idle' },
-    { do: 'wait', seconds: 0.8 },
-    { do: 'say', message: null },
-    { do: 'expression', name: 'neutral' },
-  ],
+  homeStretchUp: [{ do: 'say', message: null }, ...STRETCH, ...STAND_UP],
+  homeWake: [{ do: 'say', message: null }, ...STAND_UP, ...REFRESHED_STAY],
+  homeWakeFromSleep: [{ do: 'say', message: null }, ...STRETCH, ...STAND_UP, ...REFRESHED_STAY],
 };
+
+// Every script the state machine (shared/companion.ts) can ask for exists here.
+INTERACTIONS satisfies Record<CompanionScript, Step[]>;

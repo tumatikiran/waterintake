@@ -50,6 +50,24 @@ html[data-view='mascot'], html[data-view='mascot'] body { background: transparen
   transform: rotate(45deg);
   border-radius: 0 4px 0 0;
 }
+/* Dozing in Relax mode: a gentle "z z z" drifting up from the companion's head (in the middle of the stage). */
+.zzz { position: absolute; left: calc(50% + 26px); bottom: var(--zzz-bottom, 150px); width: 60px; height: 70px; pointer-events: none; opacity: 0; transition: opacity 1.2s ease; }
+.stage[data-companion='sleeping'] .zzz { opacity: 1; }
+.zzz span { position: absolute; left: 0; bottom: 0; font: 700 16px/1 var(--font, system-ui), sans-serif; color: #5b7fb8; opacity: 0; animation: zzz-float 4.2s ease-in-out infinite; text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9); }
+.zzz span:nth-child(2) { animation-delay: 1.4s; font-size: 20px; }
+.zzz span:nth-child(3) { animation-delay: 2.8s; font-size: 25px; }
+@keyframes zzz-float {
+  0% { transform: translate(0, 0) scale(0.6) rotate(-8deg); opacity: 0; }
+  20% { opacity: 0.85; }
+  100% { transform: translate(26px, -58px) scale(1.1) rotate(8deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zzz span { animation: none; opacity: 0.75; }
+  .zzz span:nth-child(1) { transform: translate(0, 0); }
+  .zzz span:nth-child(2) { transform: translate(12px, -22px); }
+  .zzz span:nth-child(3) { transform: translate(26px, -48px); }
+}
+
 /* Relax mode: the companion is in the middle of the screen (sitting, then standing up). */
 .stage[data-phase='relax'] .reminder-card { right: calc(50% + 70px); bottom: 100px; }
 .stage[data-phase='wake'] .reminder-card { right: calc(50% + 70px); }

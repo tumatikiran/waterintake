@@ -57,3 +57,13 @@ test('"When your companion leaves": one path for every exit, and walk or run', (
   assert.equal(sanitizeSettings({ reminders: { laterExit: 'back' } }).reminders.exitPath, 'back', 'the old Drink Later choice carries over');
   assert.equal('laterExit' in sanitizeSettings({ reminders: { laterExit: 'back' } }).reminders, false, 'and the old key is dropped');
 });
+
+test('Relax mode settings: defaults, limits, fractions and partial updates', () => {
+  assert.deepEqual(DEFAULT_SETTINGS.relax, { dozeAfterMinutes: 3, durationMinutes: 0 });
+  assert.deepEqual(sanitizeSettings({}).relax, { dozeAfterMinutes: 3, durationMinutes: 0 }, 'older files get the defaults');
+  assert.deepEqual(sanitizeSettings({ relax: { dozeAfterMinutes: -4, durationMinutes: 9999 } }).relax, { dozeAfterMinutes: 0, durationMinutes: 240 });
+  assert.equal(sanitizeSettings({ relax: { dozeAfterMinutes: 0.05 } }).relax.dozeAfterMinutes, 0.05);
+  assert.equal(sanitizeSettings({ relax: { dozeAfterMinutes: 'soon' } }).relax.dozeAfterMinutes, 3);
+  const merged = mergeSettings(DEFAULT_SETTINGS, { relax: { durationMinutes: 30 } });
+  assert.deepEqual(merged.relax, { dozeAfterMinutes: 3, durationMinutes: 30 }, 'a partial update keeps the other value');
+});

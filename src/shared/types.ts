@@ -39,10 +39,17 @@ export interface ReminderSettings {
   systemNotification: boolean; // also show an OS notification
 }
 
+/** Relax mode. Minutes may be fractional (tests use seconds); 0 means never / until I stop. */
+export interface RelaxSettings {
+  dozeAfterMinutes: number; // sitting quietly this long, the companion dozes off
+  durationMinutes: number; // Relax mode ends by itself after this long
+}
+
 export interface Settings {
   version: 1;
   userName: string;
   reminders: ReminderSettings;
+  relax: RelaxSettings;
   characterId: string;
   openAtLogin: boolean;
 }
@@ -99,6 +106,8 @@ export interface ReminderContext {
   character: { id: string; revision: number };
   firstOfDay: boolean;
   hour: number; // local hour, for greetings
+  /** Relax mode only: how long the companion rests before dozing off (0 = never). */
+  dozeAfterMinutes?: number;
   /** Already answered with a notification button (Android): play that response right after arriving. */
   answer?: 'drank' | 'later';
 }

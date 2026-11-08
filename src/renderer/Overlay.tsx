@@ -3,17 +3,19 @@ import { Canvas } from '@react-three/fiber';
 import type { ReminderContext, ReminderResponse, ResponseResult } from '../shared/types';
 import { DESKTOP_STAGE, Mascot, stageStyle, type StageLayout } from './Mascot';
 import { ReminderCard } from './ReminderCard';
+import { Zzz } from './Zzz';
 import { sourceKey, type CharacterSource } from './character/assets';
 import { Director, type Actor } from './behavior/Director';
 import type { InteractionName, Leave, Step } from './behavior/interactions';
+import { companionStep, OFFSTAGE, type CompanionEvent, type CompanionMode, type CompanionScript, type CompanionState } from '../shared/companion';
 import { renderMessage, type CardMessage, type MessageKey } from './behavior/messages';
 
 /** If nobody answers, the companion leaves on its own after this long. */
 const ANSWER_TIMEOUT_MS = 3 * 60_000;
 
-type Phase = 'hidden' | InteractionName | 'waiting';
-/** What to start once the character is loaded: a reminder from the edge, Relax mode, or a reminder that interrupts Relax mode. */
-type Pending = 'arrive' | 'relax' | 'wakeToRemind' | 'remindHere';
+type Phase = 'hidden' | CompanionScript | 'waiting';
+/** What to start once the character is loaded and on stage. */
+type Pending = 'remind' | 'relaxOn';
 
 /**
  * Where and how he leaves (the same for every answer), from the settings that
@@ -51,11 +53,13 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
   const ctx = useRef<ReminderContext | null>(null);
   const result = useRef<ResponseResult | null>(null);
   const pending = useRef<Pending | null>(null);
-  // Relax mode: on stage (walking to the middle or sitting), and whether he has sat down yet.
-  const relaxing = useRef(false);
-  const seated = useRef(false);
   const answered = useRef(false);
   const timeout = useRef<number>(undefined);
+  // The companion's state (shared/companion.ts) and the doze timer it asks for.
+  const machine = useRef<CompanionState>(OFFSTAGE);
+  const [mode, setMode] = useState<CompanionMode>('offstage');
+  const dozeTimer = useRef<number>(undefined);
+  const dispatchRef = useRef<(e: CompanionEvent) => void>(() => {});
 
   const say = useCallback((key: MessageKey | null, actions: boolean) => {
     if (!key || !ctx.current) return setCard({ message: null, actions: false });
@@ -63,16 +67,46 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
   }, []);
 
   const onStep = useCallback((_name: InteractionName, step: Step) => {
-    if (step.do === 'play' && step.animation === 'SitDown') seated.current = true;
+    if (step.do === 'play' && step.animation === 'SitDown') dispatchRef.current({ type: 'seated' });
   }, []);
   const director = useMemo(() => (actor ? new Director(actor, { say, onStep }) : null), [actor, say, onStep]);
 
   const finish = useCallback(() => {
+    machine.current = OFFSTAGE;
+    setMode('offstage');
+    window.clearTimeout(dozeTimer.current);
     setCard({ message: null, actions: false });
     setPhase('hidden');
     // Let one empty frame paint before hiding so the next show starts clean.
     requestAnimationFrame(() => requestAnimationFrame(() => window.aquamate.mascotDone()));
   }, []);
+
+  /** Arrived with a reminder: wait for an answer (or play one given on a notification). */
+  const arrived = useRef<() => void>(() => {});
+
+  // Moves the state machine and plays what it asks for; reports `done` when that finishes uninterrupted.
+  const dispatch = useCallback(
+    async (event: CompanionEvent) => {
+      const t = companionStep('overlay', machine.current, event);
+      if (t.ignored) return;
+      machine.current = t.state;
+      setMode(t.state.mode);
+      window.clearTimeout(dozeTimer.current);
+      const dozeAfter = ctx.current?.dozeAfterMinutes ?? 0;
+      if (t.dozeTimer && dozeAfter > 0) dozeTimer.current = window.setTimeout(() => dispatchRef.current({ type: 'doze' }), dozeAfter * 60_000);
+      if (t.finish) return finish();
+      if (!t.scripts.length) return;
+      if (!director) return finish();
+      for (const script of t.scripts) {
+        setPhase(script);
+        if (!(await director.run(script, leaveFor(result.current ?? ctx.current)))) return; // something newer took over
+      }
+      if (machine.current.mode === 'reminding') arrived.current();
+      else dispatchRef.current({ type: 'done' });
+    },
+    [director, finish],
+  );
+  dispatchRef.current = (e) => void dispatch(e);
 
   const answer = useCallback(
     async (kind: ReminderResponse) => {
@@ -85,49 +119,40 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
       } catch {
         result.current = null;
       }
-      setPhase(kind);
-      if (!director) return finish();
-      if (await director.run(kind, leaveFor(result.current ?? ctx.current))) finish();
+      if (!director || sceneFailed) return finish(); // card only: nobody to walk off
+      void dispatch({ type: 'answer', kind });
     },
-    [director, finish],
+    [director, sceneFailed, dispatch, finish],
   );
+  arrived.current = () => {
+    if (ctx.current?.answer) return void answer(ctx.current.answer);
+    setPhase('waiting');
+    timeout.current = window.setTimeout(() => answer('timeout'), ANSWER_TIMEOUT_MS);
+  };
 
-  // Starts the arrival (or Relax mode) once the right character is loaded and staged.
-  const tryStart = useCallback(async () => {
+  // Starts once the right character is loaded. From off-stage it walks in;
+  // otherwise (relaxing) whoever is on stage handles it from where they are.
+  const tryStart = useCallback(() => {
     const c = ctx.current;
     const what = pending.current;
     if (!what || !c) return;
-    const wanted = sourceKey({ kind: 'stored', id: c.character.id, revision: c.character.revision });
     if (sceneFailed) {
       pending.current = null;
-      if (what === 'relax') return finish(); // nothing to show without 3D
+      if (what === 'relaxOn') return finish(); // nothing to show without 3D
       window.aquamate.mascotReady();
       setPhase('waiting');
       say('reminder', true);
       return;
     }
     if (!director || !actor) return;
-    // From the edge: the wanted character must be loaded. Interrupting Relax mode: whoever is sitting there.
-    if (what === 'arrive' || what === 'relax') {
-      if (actor.key !== wanted) return;
+    if (machine.current.mode === 'offstage') {
+      if (actor.key !== sourceKey({ kind: 'stored', id: c.character.id, revision: c.character.revision })) return;
       actor.stage();
     }
     pending.current = null;
     window.aquamate.mascotReady();
-    setPhase(what);
-    if (what === 'relax') {
-      relaxing.current = true;
-      seated.current = false;
-      void director.run('relax');
-      return;
-    }
-    if (await director.run(what)) {
-      // Already answered with a notification button (Android): play that answer now.
-      if (c.answer) return answer(c.answer);
-      setPhase('waiting');
-      timeout.current = window.setTimeout(() => answer('timeout'), ANSWER_TIMEOUT_MS);
-    }
-  }, [actor, director, sceneFailed, say, answer]);
+    void dispatch({ type: what === 'remind' ? 'remind' : 'relaxOn' });
+  }, [actor, director, sceneFailed, say, dispatch, finish]);
 
   useEffect(
     () =>
@@ -135,12 +160,10 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
         ctx.current = c;
         result.current = null;
         answered.current = false;
-        // A reminder ends Relax mode: the companion gets up and reminds from where they are.
-        const fromRelax = relaxing.current;
-        relaxing.current = false;
-        pending.current = fromRelax ? (seated.current ? 'wakeToRemind' : 'remindHere') : 'arrive';
-        if (!fromRelax) setSource((s) => sourceFor(s, c));
-        void tryStart();
+        pending.current = 'remind';
+        // Relaxing: the one sitting there gets up to remind (and Relax mode ends).
+        if (machine.current.mode === 'offstage') setSource((s) => sourceFor(s, c));
+        tryStart();
       }),
     [tryStart],
   );
@@ -148,30 +171,24 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
   // Relax mode on (walk to the middle and sit) or off (get up and leave).
   useEffect(
     () =>
-      window.aquamate.onRelax(async (c) => {
+      window.aquamate.onRelax((c) => {
         if (c) {
           ctx.current = c;
           result.current = null;
-          pending.current = 'relax';
+          pending.current = 'relaxOn';
           setSource((s) => sourceFor(s, c));
-          void tryStart();
-          return;
+          return tryStart();
         }
-        if (pending.current === 'relax') {
+        if (pending.current === 'relaxOn') {
           pending.current = null; // turned off before he even appeared
           return finish();
         }
-        if (!relaxing.current || !director) return;
-        relaxing.current = false;
-        // Still on the way to sit down: just leave. Otherwise stand up first.
-        const how = seated.current ? 'wake' : 'skip';
-        setPhase(how);
-        if (await director.run(how, leaveFor(ctx.current))) finish();
+        dispatchRef.current({ type: 'relaxOff' });
       }),
-    [tryStart, director, finish],
+    [tryStart, finish],
   );
   useEffect(() => {
-    void tryStart();
+    tryStart();
   }, [tryStart]);
 
   // Card-only fallback when 3D is unavailable: no walking, so leave right away.
@@ -203,13 +220,20 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
     };
   }, [cardVisible]);
 
-  useEffect(() => () => window.clearTimeout(timeout.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(timeout.current);
+      window.clearTimeout(dozeTimer.current);
+    },
+    [],
+  );
 
   return (
     <div
       className={`stage${layout === 'mobile' ? ' is-mobile' : ''}`}
       style={stageStyle(stageLayout)}
       data-phase={phase}
+      data-companion={mode}
       data-pointer={pointerOverCard ? 'card' : undefined}
       data-testid="stage"
     >
@@ -230,6 +254,7 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
           </Suspense>
         </Canvas>
       </SceneBoundary>
+      <Zzz />
       <ReminderCard
         ref={cardRef}
         message={card.message}

@@ -2,9 +2,9 @@
  * Procedural AquaMate characters.
  *
  * buildCharacter(recipe) returns a real rigged model: one skinned mesh per
- * material on an 18-bone skeleton, a face mesh with happy/sad/blink morph
+ * material on an 18-bone skeleton, a face mesh with happy/sad/blink/open morph
  * targets, and baked animation clips (Idle, Walk, Wave, Drink, Happy, Sad,
- * SadWalk, Run, and SitDown, Relax and StandUp for Relax mode). The same code produces the bundled default GLB
+ * SadWalk, Run, and SitDown, Relax, StandUp, Doze and Stretch for Relax mode). The same code produces the bundled default GLB
  * (scripts/generate-placeholder-model.mjs) and characters made in the
  * creator, which are exported to GLB and stored like any uploaded model.
  *
@@ -108,7 +108,7 @@ export const DRINK = { duration: 4.4, liftEnd: 0.8, drinkEnd: 3.1, lowerEnd: 3.9
  * floor and cross the legs), the seated breathing loop, and standing up.
  * One breath every `breath` seconds: slow and calm.
  */
-export const SIT = { down: 2.6, downCrouch: 1.0, up: 2.2, upCrouch: 1.15, breath: 5.5 };
+export const SIT = { down: 2.6, downCrouch: 1.0, up: 2.2, upCrouch: 1.15, breath: 5.5, sleepBreath: 8, stretch: 2.7 };
 const SEAT = { hipsY: 0.16, handAboveKnee: 0.15 };
 
 /** Metadata stored on the model (glTF extras), read by the runtime rig. */
@@ -343,23 +343,34 @@ interface FaceShape {
   browRaise: number;
   browTilt: number; // >0 raises the inner ends (worried / sad)
   eyeOpen: number;
+  open: number; // mouth: 0 = a line, 1 = a round "o" (yawning)
 }
-const FACE_SHAPES: Record<'neutral' | 'happy' | 'sad' | 'blink', FaceShape> = {
-  neutral: { smile: 0.016, width: 0.05, browRaise: 0, browTilt: 0, eyeOpen: 1 },
-  happy: { smile: 0.034, width: 0.064, browRaise: 0.014, browTilt: -0.08, eyeOpen: 1 },
-  sad: { smile: -0.022, width: 0.044, browRaise: 0.006, browTilt: 0.42, eyeOpen: 1 },
-  blink: { smile: 0.016, width: 0.05, browRaise: 0, browTilt: 0, eyeOpen: 0.08 },
+const FACE_SHAPES: Record<'neutral' | 'happy' | 'sad' | 'blink' | 'open', FaceShape> = {
+  neutral: { smile: 0.016, width: 0.05, browRaise: 0, browTilt: 0, eyeOpen: 1, open: 0 },
+  happy: { smile: 0.034, width: 0.064, browRaise: 0.014, browTilt: -0.08, eyeOpen: 1, open: 0 },
+  sad: { smile: -0.022, width: 0.044, browRaise: 0.006, browTilt: 0.42, eyeOpen: 1, open: 0 },
+  blink: { smile: 0.016, width: 0.05, browRaise: 0, browTilt: 0, eyeOpen: 0.08, open: 0 },
+  open: { smile: 0, width: 0.024, browRaise: 0.01, browTilt: 0.1, eyeOpen: 1, open: 1 },
 };
 
 class MouthCurve extends THREE.Curve<THREE.Vector3> {
   private readonly width: number;
   private readonly smile: number;
-  constructor(width: number, smile: number) {
+  private readonly open: number;
+  constructor(width: number, smile: number, open = 0) {
     super();
     this.width = width;
     this.smile = smile;
+    this.open = open;
   }
   override getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
+    // Open: the same points go once around a small oval instead of along a line.
+    if (this.open > 0) {
+      const a = 2 * Math.PI * t;
+      const ox = -this.width * Math.cos(a);
+      const oy = 1.71 - 0.02 * this.open * Math.sin(a);
+      return target.set(ox, oy, faceZ(ox, oy) + 0.004);
+    }
     const x = (t * 2 - 1) * this.width;
     const y = 1.712 - this.smile * (1 - (x / this.width) ** 2);
     return target.set(x, y, faceZ(x, y) + 0.004);
@@ -387,7 +398,7 @@ function faceGeometry(s: FaceShape, lashes: boolean): THREE.BufferGeometry {
       parts.push(lash);
     }
   }
-  parts.push(new THREE.TubeGeometry(new MouthCurve(s.width, s.smile), 20, 0.0105, 6, false));
+  parts.push(new THREE.TubeGeometry(new MouthCurve(s.width, s.smile, s.open), 20, 0.0105, 6, false));
   for (const side of [1, -1]) {
     const x = 0.078 * side;
     const y = 1.865 + s.browRaise;
@@ -404,7 +415,7 @@ function buildFace(material: THREE.Material, skeleton: THREE.Skeleton, lashes: b
   const base = faceGeometry(FACE_SHAPES.neutral, lashes);
   const position: THREE.BufferAttribute[] = [];
   const normal: THREE.BufferAttribute[] = [];
-  for (const name of ['happy', 'sad', 'blink'] as const) {
+  for (const name of ['happy', 'sad', 'blink', 'open'] as const) {
     const g = faceGeometry(FACE_SHAPES[name], lashes);
     if (g.attributes.position.count !== base.attributes.position.count) throw new Error('Face morph topology mismatch');
     const pos = g.attributes.position.clone() as THREE.BufferAttribute;
@@ -623,17 +634,19 @@ class Baker {
    * Sitting cross-legged on the floor, hands resting on the knees (relaxing
    * is prop-free). `breath` (0…1) lifts the chest and
    * shoulders; `sway` (-1…1) tilts the head a little from side to side.
+   * `droop` (0…1+) lets the head and back sink as when dozing; `stretch`
+   * (0…1) raises both arms overhead and tips the head back.
    */
-  seated(breath: number, sway: number) {
+  seated(breath: number, sway: number, { droop = 0, stretch = 0 }: { droop?: number; stretch?: number } = {}) {
     this.reset();
     const e = new THREE.Euler();
     const set = (name: BoneName, r: Vec3) => this.bones[name].quaternion.setFromEuler(e.set(...r));
     this.bones.Hips.position.add(new THREE.Vector3(0, SEAT.hipsY - JOINTS.Hips[1] + 0.012 * breath, -0.02));
-    set('Spine', [0.07 - 0.03 * breath, 0, 0.012 * sway]);
-    set('Chest', [0.03 - 0.06 * breath, 0, 0]);
-    set('Neck', [0.02 + 0.03 * breath, 0, 0]);
+    set('Spine', [0.07 - 0.03 * breath + 0.07 * droop - 0.1 * stretch, 0, 0.012 * sway]);
+    set('Chest', [0.03 - 0.06 * breath + 0.04 * droop - 0.12 * stretch, 0, 0]);
+    set('Neck', [0.02 + 0.03 * breath + 0.1 * droop - 0.08 * stretch, 0, 0]);
     // Chin slightly lowered (not so far that the hair hides the closed eyes), head resting to one side.
-    set('Head', [0.03 + 0.02 * breath, 0.05 * sway, 0.08 + 0.035 * sway]);
+    set('Head', [0.03 + 0.02 * breath + 0.16 * droop - 0.3 * stretch, 0.05 * sway, 0.08 + 0.035 * sway + 0.07 * droop]);
     this.root.updateMatrixWorld(true);
     const v = new THREE.Vector3();
     for (const [side, s] of [['L', 1], ['R', -1]] as const) {
@@ -644,9 +657,13 @@ class Baker {
       this.aim(`LowerLeg_${side}`, ankle.sub(knee));
       // Each foot tucks under the opposite knee: toes out, the sole turned up and back.
       this.orient(`Foot_${side}`, new THREE.Vector3(-0.85 * s, 0, 0.5), new THREE.Vector3(0, 0.35, -0.94));
-      // Hands rest on the knees.
+      // Hands rest on the knees (or reach overhead in a stretch).
       const rest = knee.clone().add(new THREE.Vector3(-0.01 * s, SEAT.handAboveKnee, -0.01));
-      this.reach(side, rest, new THREE.Vector3(0.7 * s, -0.1, -0.7));
+      if (stretch > 0) {
+        const shoulder = this.bones[`UpperArm_${side}`].getWorldPosition(new THREE.Vector3());
+        rest.lerp(shoulder.add(new THREE.Vector3(0.1 * s, 0.47, -0.03)), stretch);
+      }
+      this.reach(side, rest, new THREE.Vector3(0.7 * s, -0.1 + 0.4 * stretch, -0.7 + 0.3 * stretch));
     }
   }
 
@@ -732,18 +749,28 @@ function bakeRelaxClips(b: Baker): THREE.AnimationClip[] {
 
   const sitDown = b.bakeWith('SitDown', SIT.down, (t) => through(t, SIT.downCrouch, SIT.down, stand, crouch, seated));
   const standUp = b.bakeWith('StandUp', SIT.up, (t) => through(t, SIT.upCrouch, SIT.up, seated, crouch, stand));
-  // Two slow breaths per loop (in through the nose, a longer breath out), head swaying once.
-  const relax = b.bakeWith(
-    'Relax',
-    2 * SIT.breath,
-    (_t, w) => {
-      const phase = (2 * w) % (2 * Math.PI);
-      const breath = phase < 2.4 ? smooth(phase / 2.4) : 1 - smooth((phase - 2.4) / (2 * Math.PI - 2.4));
-      b.seated(breath, Math.sin(w));
+  // A breath: in through the nose, then a longer breath out (phase in radians).
+  const breathAt = (phase: number) => {
+    const p = phase % (2 * Math.PI);
+    return p < 2.4 ? smooth(p / 2.4) : 1 - smooth((p - 2.4) / (2 * Math.PI - 2.4));
+  };
+  // Two slow breaths per loop, head swaying once.
+  const relax = b.bakeWith('Relax', 2 * SIT.breath, (_t, w) => b.seated(breathAt(2 * w), Math.sin(w)), 15);
+  // Asleep: deeper, slower breaths, the head sunk forward, and once per loop
+  // a little nod (the head dips, then settles back).
+  const doze = b.bakeWith(
+    'Doze',
+    2 * SIT.sleepBreath,
+    (t, w) => {
+      const nod = Math.exp(-(((t - 0.68 * 2 * SIT.sleepBreath) / 0.55) ** 2));
+      b.seated(1.35 * breathAt(2 * w), 0.6 * Math.sin(w), { droop: 1 + 0.45 * nod });
     },
-    15,
+    12,
   );
-  return [sitDown, relax, standUp];
+  // Waking from a nap: arms up overhead, head back, hold, and back to the knees.
+  const reach = key(() => b.seated(0.8, 0, { stretch: 1 }));
+  const stretch = b.bakeWith('Stretch', SIT.stretch, (t) => b.blend(seated, reach, range(t, 0, 0.9) * (1 - range(t, 1.8, SIT.stretch))));
+  return [sitDown, relax, standUp, doze, stretch];
 }
 
 function bakeClips(b: Baker): THREE.AnimationClip[] {

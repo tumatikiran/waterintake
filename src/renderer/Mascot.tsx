@@ -51,6 +51,7 @@ export function stageStyle(layout: StageLayout): React.CSSProperties {
   return {
     '--ground': `${layout.groundPx}px`,
     '--card-bottom': `${Math.round(layout.groundPx + 2.08 * layout.zoom)}px`, // just above the head
+    '--zzz-bottom': `${Math.round(layout.groundPx + 1.1 * layout.zoom)}px`, // above a seated, dozing head
   } as React.CSSProperties;
 }
 

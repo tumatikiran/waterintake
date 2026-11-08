@@ -9,6 +9,14 @@ const remind = (patch: Partial<ReminderSettings>) => update({ reminders: patch }
 
 const INTERVALS = [15, 20, 30, 45, 60, 90, 120, 180].map((m) => ({ value: m, label: m < 60 ? `${m} minutes` : `${m / 60} hour${m === 60 ? '' : 's'}` }));
 const SNOOZES = [5, 10, 15, 20, 30, 45, 60].map((m) => ({ value: m, label: `${m} minutes` }));
+const DOZE_AFTER = [
+  { value: 0, label: 'Never' },
+  ...[1, 3, 5, 10].map((m) => ({ value: m, label: `After ${m} minute${m === 1 ? '' : 's'}` })),
+];
+const RELAX_FOR = [
+  { value: 0, label: 'Until I stop' },
+  ...[15, 30, 60].map((m) => ({ value: m, label: m < 60 ? `${m} minutes` : '1 hour' })),
+];
 // Week starts on Monday in the UI; values follow Date#getDay (0 = Sunday).
 const DAYS: { value: Weekday; short: string; long: string }[] = [
   { value: 1, short: 'M', long: 'Monday' },
@@ -125,6 +133,34 @@ export function RemindersPanel({ state }: { state: AppState }) {
           />
         </Section>
       )}
+
+      <Section
+        title="Relax mode"
+        description={
+          state.app.mobile
+            ? 'Your companion sits down on the Today screen and relaxes with you. Tap them to wake them.'
+            : 'Your companion sits in the middle of the screen and relaxes with you. Water reminders wait until you finish.'
+        }
+      >
+        <Row label="Doze off" htmlFor="doze-after" hint="Relaxing this long, they nod off with a gentle “zzz”.">
+          <Select
+            id="doze-after"
+            label="Doze off"
+            value={state.settings.relax.dozeAfterMinutes}
+            options={DOZE_AFTER}
+            onChange={(dozeAfterMinutes) => update({ relax: { dozeAfterMinutes } })}
+          />
+        </Row>
+        <Row label="Relax for" htmlFor="relax-for" hint="Then they stretch, get up and carry on.">
+          <Select
+            id="relax-for"
+            label="Relax for"
+            value={state.settings.relax.durationMinutes}
+            options={RELAX_FOR}
+            onChange={(durationMinutes) => update({ relax: { durationMinutes } })}
+          />
+        </Row>
+      </Section>
 
       <Section title="About you">
         <NameField value={state.settings.userName} />

@@ -237,7 +237,7 @@ try {
   await upload(good);
   await page.getByText('Robo Buddy is now your companion').waitFor({ timeout: 30000 });
   st = await state();
-  assert.deepEqual(st.characters.find((c) => c.name === 'Robo Buddy')?.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'SitDown', 'Relax', 'StandUp']);
+  assert.deepEqual(st.characters.find((c) => c.name === 'Robo Buddy')?.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
 
   step('the active character stars on the Today screen and in reminders');
   await page.getByRole('tab', { name: 'Today' }).click();
@@ -321,6 +321,23 @@ try {
   step('back to Aqua, the built-in male companion: Today screen and every reminder answer');
   await useBuiltin('Aqua', 'default');
   await everyInteraction('Aqua', 'stored:default:1');
+
+  step('Today screen: dozing off while relaxing, and tapping wakes him with a stretch');
+  await page.evaluate(() => window.aquamate.updateSettings({ relax: { dozeAfterMinutes: 0.05 } }));
+  await page.getByRole('button', { name: 'Relax 🌿' }).click();
+  await homeAnim('Doze', 30000);
+  await page.waitForFunction(() => window.__aquamateHomeDebug.expression === 'asleep', null, { timeout: 4000 });
+  await page.waitForSelector('[data-testid=home-stage][data-companion=sleeping]');
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-testid=home-stage] [data-testid=zzz]')).opacity === '1', null, { timeout: 4000 });
+  await sleep(1500);
+  await shot('m10-dozing.png');
+  await page.getByTestId('home-stage').click();
+  await homeAnim('Stretch', 6000);
+  assert.equal((await state()).status.relaxing, false);
+  await homeAnim('StandUp', 8000);
+  await page.getByTestId('home-bubble').getByText(/All refreshed!/).waitFor({ timeout: 10000 });
+  await homeAnim('Idle', 10000);
+  await page.evaluate(() => window.aquamate.updateSettings({ relax: { dozeAfterMinutes: 3 } }));
 
   step('settings and the glass count survive a restart');
   await page.reload();

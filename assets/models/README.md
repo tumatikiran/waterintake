@@ -18,8 +18,8 @@ npm run generate:model
 | Part | Details |
 | --- | --- |
 | Rig | 18 bones (`Root`, `Hips`, `Spine`, `Chest`, `Neck`, `Head`, `UpperArm_L/R`, `LowerArm_L/R`, `Hand_L/R`, `UpperLeg_L/R`, `LowerLeg_L/R`, `Foot_L/R`) and one skinned mesh per material |
-| Face | A `Face` mesh with morph targets `happy`, `sad` and `blink` |
-| Animations | `Idle`, `Walk`, `Wave` (left hand), `Drink` (IK-baked, the cap meets the mouth), `Happy`, `Sad`, `SadWalk`, `Run`, and for Relax mode `SitDown`, `Relax` (cross-legged, hands on the knees, slow breathing) and `StandUp`. All are empty-handed except `Drink` |
+| Face | A `Face` mesh with morph targets `happy`, `sad`, `blink` and `open` (mouth open: asleep, yawning) |
+| Animations | `Idle`, `Walk`, `Wave` (left hand), `Drink` (IK-baked, the cap meets the mouth), `Happy`, `Sad`, `SadWalk`, `Run`, and for Relax mode `SitDown`, `Relax` (cross-legged, hands on the knees, slow breathing), `StandUp`, `Doze` (asleep: deeper breathing, head down, a little nod) and `Stretch` (seated, arms overhead, on waking). All are empty-handed except `Drink` |
 | Hand pose | `HandCarry`: right arm only, carrying something upright. Not an animation of its own: while the character holds a prop, it replaces the right arm of whatever is playing (except `Drink` and `Happy`, which move the arm themselves) |
 | Metadata | glTF `extras.aquamate` on the root node: body height for scaling, walk speeds that match each walk's stride, the part of the Drink clip where the bottle empties, and where the bottle sits in `Hand_R` |
 
@@ -42,15 +42,15 @@ requirements and either save it over `human-character.glb` or upload it in
 | Character | Friendly, stylized, readable at about 240 px tall |
 | Orientation | Y up, facing +Z, feet at the origin (any scale is fine) |
 | Rig | Humanoid skeleton with a skinned mesh; a right-hand bone named like `RightHand` or `Hand_R` |
-| Clips | `Idle` (loop), `Walk` (in-place loop, no root motion), `Wave` (one-shot, about 2 s), `Drink` (one-shot, about 4 s, using the right hand), `Happy` (loop), `Sad` (one-shot, about 2 s), `SadWalk` (in-place loop), `Run` (in-place loop), `SitDown` (one-shot, standing to sitting on the floor), `Relax` (seated loop, ideally with slow breathing), `StandUp` (one-shot) |
-| Face | Morph targets `happy`, `sad` and `blink`, or ARKit / VRoid equivalents |
+| Clips | `Idle` (loop), `Walk` (in-place loop, no root motion), `Wave` (one-shot, about 2 s), `Drink` (one-shot, about 4 s, using the right hand), `Happy` (loop), `Sad` (one-shot, about 2 s), `SadWalk` (in-place loop), `Run` (in-place loop), `SitDown` (one-shot, standing to sitting on the floor), `Relax` (seated loop, ideally with slow breathing), `StandUp` (one-shot), `Doze` (seated sleeping loop), `Stretch` (one-shot, seated) |
+| Face | Morph targets `happy`, `sad`, `blink` and optionally `open`, or ARKit / VRoid equivalents (`mouthOpen`/`jawOpen` for open) |
 | Budget | Under about 20k triangles and 3 MB |
 
 ### Fallbacks for missing parts
 
 - Clip names are matched loosely: `Walking`, `Armature|walk` and
   `mixamo.com|Waving` all work.
-- Missing clips fall back: Drink → Happy, Sad → Idle, SadWalk → a slower Walk, Run → a faster Walk, SitDown/Relax/StandUp → Idle (the model relaxes standing up, eyes closed if it has a face).
+- Missing clips fall back: Drink → Happy, Sad → Idle, SadWalk → a slower Walk, Run → a faster Walk, SitDown/Relax/StandUp → Idle (the model relaxes standing up, eyes closed if it has a face), Doze/Stretch → Relax. Without an `open` morph target, asleep is just eyes closed.
 - Characters made in the creator by an older version get any clips added since (such as Relax mode's) when they load.
 - A model without face morph targets simply has no expressions.
 

@@ -46,9 +46,13 @@ shows through.</sub>
   **Relax** in the settings window. Your companion walks to the middle of the
   screen with empty hands, sits down cross-legged, closes their eyes with a faint smile and
   breathes slowly (about one breath every 5½ seconds), head resting gently
-  to one side. Turn it off and they open their eyes, stand up, wave and leave
-  the way you chose. A reminder during Relax mode wakes them: they get up and
-  remind you, and Relax mode ends.
+  to one side. After a few minutes (**Doze off**: never, 1, 3, 5 or 10) they
+  nod off: deeper, slower breaths, head sinking forward, an occasional little
+  nod, and a floating "z z z". Turn it off (or let **Relax for** 15, 30 or 60
+  minutes run out) and they open their eyes (a big seated stretch and a yawn
+  if they were asleep), stand up, wave and leave the way you chose.
+  Scheduled water reminders wait until you're done relaxing; **Remind me now**
+  still gets them up to remind you.
 
 **Smart reminders**
 
@@ -270,6 +274,9 @@ This builds both apps, then runs three kinds of tests:
   - snooze, pause and resume
   - stopping once the goal is reached
   - cleaning up settings from older or hand-edited files
+  - the companion's state machine (`src/shared/companion.ts`): every move
+    between reminding, relaxing, sleeping and waking, on the desktop and on
+    Android's Today screen
 - **End-to-end tests** (`tests/e2e.mjs`), which launch the real Electron app
   with Playwright, using a throwaway data folder:
   - **Reminder appears:** the full-width overlay shows, stays on top, and the
@@ -293,6 +300,10 @@ This builds both apps, then runs three kinds of tests:
     deleted) and is the one on stage throughout every interaction: walking
     in, waiting, drinking, Drink Later, × and leaving. The Android suite
     checks the same on the Today screen and in the reminder scene.
+  - **Dozing:** Relax mode dozes off (asleep face, "zzz"), a reminder wakes
+    the sleeping companion with a stretch and a yawn, turning Relax mode off
+    while asleep does the same before leaving, and **Relax for** ends it by
+    itself.
   - **Relax mode:** for Marina and for Aqua, the companion walks to the exact
     middle of the screen, sits down, relaxes with closed eyes until it is
     turned off, then stands up and leaves, and the overlay hides. A reminder

@@ -106,7 +106,8 @@ function main(): void {
       const state = powerMonitor.getSystemIdleState(IDLE_THRESHOLD_S);
       return state === 'idle' || state === 'locked';
     },
-    isBusy: () => windows.busy,
+    // Scheduled (water) reminders wait while you relax; "Remind me now" still wakes the companion.
+    isBusy: () => windows.busy || windows.relaxing,
     fire: (reason) => startReminder(reason),
     changed: () => pushState(),
   });
@@ -170,6 +171,7 @@ function main(): void {
   function startReminder(reason: ReminderReason): void {
     if (windows.busy) return;
     if (!windows.startReminder(sceneContext(reason))) return;
+    clearTimeout(relaxTimer); // a reminder ends Relax mode
     log.reminderShown();
     if (reason === 'manual') scheduler.manualShown();
     if (reason !== 'manual' && settings.reminders.systemNotification && Notification.isSupported()) {
@@ -179,9 +181,13 @@ function main(): void {
     pushState();
   }
 
-  /** Relax mode on or off. Ignored while a reminder is on screen. */
+  /** Relax mode on or off. Ignored while a reminder is on screen. "Relax for" ends it by itself. */
+  let relaxTimer: ReturnType<typeof setTimeout> | undefined;
   function setRelax(on: boolean): void {
-    if (on ? windows.startRelax(sceneContext('manual')) : windows.stopRelax()) pushState();
+    clearTimeout(relaxTimer);
+    const { dozeAfterMinutes, durationMinutes } = settings.relax;
+    if (on ? windows.startRelax({ ...sceneContext('manual'), dozeAfterMinutes }) : windows.stopRelax()) pushState();
+    if (on && windows.relaxing && durationMinutes > 0) relaxTimer = setTimeout(() => setRelax(false), durationMinutes * 60_000);
   }
 
   function logGlass(): number {

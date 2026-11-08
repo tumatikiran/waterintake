@@ -23,9 +23,16 @@ const ROLE_LABELS: Record<AnimationRole, string> = {
   SitDown: 'Sit down',
   Relax: 'Relax',
   StandUp: 'Stand up',
+  Doze: 'Doze',
+  Stretch: 'Stretch',
 };
-/** Sitting down and standing up are transitions; the Relax chip plays them around the seated loop. */
-const TRANSITIONS: AnimationRole[] = ['SitDown', 'StandUp'];
+/** Transitions: the seated chips (Relax, Doze) play them around their loops. */
+const TRANSITIONS: AnimationRole[] = ['SitDown', 'StandUp', 'Stretch'];
+/** Seated loops, and the face each one wears. */
+const SEATED: Partial<Record<AnimationRole, Expression>> = { Relax: 'relaxed', Doze: 'asleep' };
+
+/** What's playing now (read through a call: it changes while awaiting). */
+const nowPlaying = (rig: CharacterRig) => rig.animations.playing;
 
 function Turntable({ angle, children }: { angle: React.RefObject<number>; children: ReactNode }) {
   const group = useRef<THREE.Group>(null);
@@ -58,20 +65,28 @@ export function CharacterPreview({ source, onRig }: { source: CharacterSource; o
   const play = async (role: AnimationRole) => {
     if (!rig) return;
     setActive(role);
-    // Relax sits down first and closes the eyes; anything else after it stands up first.
-    if (role === 'Relax' && !seated.current) {
-      seated.current = true;
-      rig.expressions.set('happy');
-      setExpression('happy');
-      await rig.animations.once('SitDown');
-      if (rig.animations.playing !== 'SitDown') return; // another chip was pressed meanwhile
-      rig.animations.loop('Relax');
-      rig.expressions.set('relaxed');
-      setExpression('relaxed');
+    // Seated loops sit down first and close the eyes; anything else after them stands up first.
+    const face = SEATED[role];
+    if (face) {
+      if (!seated.current) {
+        seated.current = true;
+        rig.expressions.set('happy');
+        setExpression('happy');
+        await rig.animations.once('SitDown');
+        if (rig.animations.playing !== 'SitDown') return; // another chip was pressed meanwhile
+      }
+      rig.animations.loop(role, { fade: role === 'Doze' ? 1.5 : 0.35 });
+      rig.expressions.set(face);
+      setExpression(face);
       return;
     }
-    if (role !== 'Relax' && seated.current) {
+    if (seated.current) {
       seated.current = false;
+      if (rig.animations.playing === 'Doze') {
+        rig.expressions.set('yawn');
+        await rig.animations.once('Stretch');
+        if (nowPlaying(rig) !== 'Stretch') return;
+      }
       rig.expressions.set('neutral');
       setExpression('neutral');
       await rig.animations.once('StandUp');

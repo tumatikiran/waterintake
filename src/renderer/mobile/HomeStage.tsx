@@ -6,7 +6,8 @@ import { ReminderCard } from '../ReminderCard';
 import type { CharacterSource } from '../character/assets';
 import { Director, type Actor } from '../behavior/Director';
 import { renderMessage, type CardMessage, type MessageContext } from '../behavior/messages';
-import type { InteractionName } from '../behavior/interactions';
+import { companionStep, IDLE, isRelaxing, type CompanionEvent, type CompanionMode, type CompanionState } from '../../shared/companion';
+import { Zzz } from '../Zzz';
 
 const HOME_STAGE: StageLayout = { stop: 'center', groundPx: 16, zoom: 140 };
 const noop = () => {};
@@ -50,10 +51,14 @@ export function HomeStage({ state, paused, cheers, onWake }: HomeStageProps) {
   const [bubble, setBubble] = useState<CardMessage | null>(null);
   const latest = useRef(state);
   latest.current = state;
-  const busy = useRef(false);
   const relaxing = state.status.relaxing;
-  // Whether he is sitting (or sitting down).
-  const seated = useRef(false);
+  // The companion's state (shared/companion.ts) and the doze timer it asks for.
+  const machine = useRef<CompanionState>(IDLE);
+  const [mode, setMode] = useState<CompanionMode>('idle');
+  const dozeTimer = useRef<number>(undefined);
+  const dispatchRef = useRef<(e: CompanionEvent) => void>(() => {});
+  const onWakeRef = useRef(onWake);
+  onWakeRef.current = onWake;
 
   const character = state.characters.find((c) => c.id === state.settings.characterId) ?? state.characters[0];
   const source = useMemo<CharacterSource>(
@@ -62,53 +67,62 @@ export function HomeStage({ state, paused, cheers, onWake }: HomeStageProps) {
   );
 
   const director = useMemo(
-    () => (actor ? new Director(actor, { say: (key) => setBubble(key ? renderMessage(key, homeContext(latest.current)) : null) }) : null),
+    () =>
+      actor
+        ? new Director(actor, {
+            say: (key) => setBubble(key ? renderMessage(key, homeContext(latest.current)) : null),
+            onStep: (_name, step) => {
+              if (step.do === 'play' && step.animation === 'SitDown') dispatchRef.current({ type: 'seated' });
+            },
+          })
+        : null,
     [actor],
   );
-  const run = async (name: InteractionName): Promise<boolean> => {
-    if (!director) return false;
-    busy.current = name !== 'homeIdle' && name !== 'homeSeated';
-    const done = await director.run(name);
-    if (done) busy.current = false;
-    return done;
+
+  // Moves the state machine and plays what it asks for; reports `done` when that finishes uninterrupted.
+  const dispatch = async (event: CompanionEvent) => {
+    if (!director) return;
+    const t = companionStep('home', machine.current, event);
+    if (t.endsRelax) onWakeRef.current();
+    if (t.ignored) return;
+    machine.current = t.state;
+    setMode(t.state.mode);
+    window.clearTimeout(dozeTimer.current);
+    const dozeAfter = latest.current.settings.relax.dozeAfterMinutes;
+    if (t.dozeTimer && dozeAfter > 0) dozeTimer.current = window.setTimeout(() => dispatchRef.current({ type: 'doze' }), dozeAfter * 60_000);
+    if (!t.scripts.length) return;
+    for (const script of t.scripts) if (!(await director.run(script))) return; // something newer took over
+    dispatchRef.current({ type: 'done' });
   };
+  dispatchRef.current = (e) => void dispatch(e);
+  useEffect(() => () => window.clearTimeout(dozeTimer.current), []);
 
   // A new character (or the screen opening): standing, or already sitting in Relax mode.
   useEffect(() => {
-    seated.current = relaxing;
-    void run(relaxing ? 'homeSeated' : 'homeIdle');
+    if (director) dispatchRef.current({ type: 'enter', relaxing });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [director]);
 
   // Relax mode turned on or off.
   useEffect(() => {
-    if (!director || relaxing === seated.current) return;
-    seated.current = relaxing;
-    void run(relaxing ? 'homeRelax' : 'homeWake');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (director && relaxing !== isRelaxing(machine.current)) dispatchRef.current({ type: relaxing ? 'relaxOn' : 'relaxOff' });
   }, [relaxing, director]);
 
-  // A glass was logged: drink along. Relaxing? Get up first (that ends Relax mode).
+  // A glass was logged: drink along (getting up first if relaxing; that ends Relax mode).
   const seen = useRef(cheers);
   useEffect(() => {
     if (cheers === seen.current || !director) return;
     seen.current = cheers;
-    if (!seated.current) return void run('homeDrink');
-    seated.current = false;
-    onWake();
-    void run('homeStandUp').then((done) => done && run('homeDrink'));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    dispatchRef.current({ type: 'drink' });
   }, [cheers, director]);
 
   return (
     <div
       className="stage is-mobile home-stage"
       style={stageStyle(HOME_STAGE)}
-      onClick={() => {
-        if (seated.current) onWake();
-        else if (!busy.current) void run('homePoke');
-      }}
+      onClick={() => dispatchRef.current({ type: 'poke' })} // relaxing: wakes him (Relax mode off)
       data-testid="home-stage"
+      data-companion={mode}
       data-relaxing={relaxing || undefined}
       title={relaxing ? 'Tap to wake' : 'Tap to say hi'}
     >
@@ -127,6 +141,7 @@ export function HomeStage({ state, paused, cheers, onWake }: HomeStageProps) {
           <Mascot source={source} onActor={setActor} layout={HOME_STAGE} debugName="__aquamateHomeDebug" />
         </Suspense>
       </Canvas>
+      <Zzz />
       <ReminderCard variant="bubble" message={bubble} actions={false} onDrank={noop} onLater={noop} onSkip={noop} />
     </div>
   );

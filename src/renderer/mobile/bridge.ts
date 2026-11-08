@@ -153,6 +153,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
   let permission: NotificationPermission = await checkPermission();
   let reminderActive = false;
   let relaxing = false; // Relax mode on the Today screen (not saved: it ends when the app closes)
+  let relaxTimer: number | undefined; // "Relax for": ends Relax mode by itself
   const stateChannel = new Channel<AppState>();
   const startChannel = new Channel<ReminderContext>(true);
   const visibleChannel = new Channel<boolean>(true);
@@ -352,6 +353,9 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     setRelax(on) {
       if (relaxing === on) return;
       relaxing = on;
+      window.clearTimeout(relaxTimer);
+      const minutes = settings.relax.durationMinutes;
+      if (on && minutes > 0) relaxTimer = window.setTimeout(() => api.setRelax(false), minutes * 60_000);
       push();
     },
     async logGlass() {

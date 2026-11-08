@@ -1,4 +1,4 @@
-import type { DeepPartial, ExitPath, ReminderSettings, Settings, TimeWindow, Weekday } from './types';
+import type { DeepPartial, ExitPath, RelaxSettings, ReminderSettings, Settings, TimeWindow, Weekday } from './types';
 import { parseTime } from './schedule';
 
 export const ALL_DAYS: Weekday[] = [0, 1, 2, 3, 4, 5, 6];
@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: Settings = {
     pauseWhenAway: true,
     systemNotification: false,
   },
+  relax: { dozeAfterMinutes: 3, durationMinutes: 0 },
   characterId: 'default',
   openAtLogin: false,
 };
@@ -27,6 +28,7 @@ export const LIMITS = {
   intervalMinutes: [5, 240],
   dailyGoal: [1, 30],
   snoozeMinutes: [1, 120],
+  relaxMinutes: [0, 240],
   userName: 32,
   scheduleWindows: 8,
 } as const;
@@ -69,6 +71,15 @@ function sanitizeReminders(v: unknown): ReminderSettings {
   };
 }
 
+function sanitizeRelax(v: unknown): RelaxSettings {
+  const d = DEFAULT_SETTINGS.relax;
+  const r = isObj(v) ? v : {};
+  // Not rounded: fractions of a minute are fine (and handy for tests).
+  const minutes = (x: unknown, fallback: number) =>
+    typeof x === 'number' && Number.isFinite(x) ? Math.min(LIMITS.relaxMinutes[1], Math.max(LIMITS.relaxMinutes[0], x)) : fallback;
+  return { dozeAfterMinutes: minutes(r.dozeAfterMinutes, d.dozeAfterMinutes), durationMinutes: minutes(r.durationMinutes, d.durationMinutes) };
+}
+
 /** Turns anything (an old or hand-edited settings file) into valid Settings. */
 export function sanitizeSettings(v: unknown): Settings {
   const s = isObj(v) ? v : {};
@@ -76,6 +87,7 @@ export function sanitizeSettings(v: unknown): Settings {
     version: 1,
     userName: typeof s.userName === 'string' ? s.userName.trim().slice(0, LIMITS.userName) : '',
     reminders: sanitizeReminders(s.reminders),
+    relax: sanitizeRelax(s.relax),
     characterId:
       typeof s.characterId === 'string' && /^[\w-]{1,64}$/.test(s.characterId) ? s.characterId : DEFAULT_SETTINGS.characterId,
     openAtLogin: bool(s.openAtLogin, DEFAULT_SETTINGS.openAtLogin),
@@ -86,5 +98,6 @@ export function sanitizeSettings(v: unknown): Settings {
 export function mergeSettings(current: Settings, patch: DeepPartial<Settings>): Settings {
   const p = isObj(patch) ? (patch as Record<string, unknown>) : {};
   const reminders = isObj(p.reminders) ? { ...current.reminders, ...p.reminders } : current.reminders;
-  return sanitizeSettings({ ...current, ...p, reminders });
+  const relax = isObj(p.relax) ? { ...current.relax, ...p.relax } : current.relax;
+  return sanitizeSettings({ ...current, ...p, reminders, relax });
 }
