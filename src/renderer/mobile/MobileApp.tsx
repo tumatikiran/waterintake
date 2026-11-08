@@ -4,7 +4,7 @@ import type { AppState } from '../../shared/types';
 import { Overlay } from '../Overlay';
 import { RemindersPanel } from '../settings/RemindersPanel';
 import { CharacterPanel } from '../settings/CharacterPanel';
-import { AboutPanel, ProgressRing, scheduleLine, useNow } from '../settings/today';
+import { AboutPanel, ProgressRing, TodayMedicine, scheduleLine, useNow } from '../settings/today';
 import { HomeStage } from './HomeStage';
 import { waterReminder } from '../../shared/reminders';
 
@@ -72,6 +72,17 @@ function TodayScreen({ state, paused }: { state: AppState; paused: boolean }) {
         </div>
       </header>
       {permission !== 'granted' && <PermissionCard permission={permission} />}
+      {permission === 'granted' && state.app.exactAlarms !== 'granted' && state.settings.reminders.some((r) => r.type === 'medicine' && r.enabled) && (
+        <div className="m-permission" role="status" data-testid="exact-alarms-card">
+          <div>
+            <strong>Medicine on time</strong>
+            <p>Android may deliver reminders a few minutes late. Allow alarms &amp; reminders so medicine arrives exactly on time.</p>
+          </div>
+          <button type="button" className="btn btn-primary btn-small" onClick={() => window.aquamate.mobile?.requestExactAlarms()}>
+            Allow
+          </button>
+        </div>
+      )}
       <HomeStage state={state} paused={paused} cheers={cheers} onWake={() => window.aquamate.setRelax(false)} />
       <section className="m-summary" data-testid="today">
         <ProgressRing done={done} goal={goal} />
@@ -84,6 +95,7 @@ function TodayScreen({ state, paused }: { state: AppState; paused: boolean }) {
           </p>
         </div>
       </section>
+      <TodayMedicine state={state} now={now} />
       <div className="m-actions">
         <button
           type="button"

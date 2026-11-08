@@ -45,6 +45,8 @@ const app = await electron.launch({ executablePath: packaged || require('electro
 const errors = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const step = (msg) => console.log(`  • ${msg}`);
+const hhmm = (t = new Date()) => `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+
 
 try {
   const pageFor = async (view) => {
@@ -469,14 +471,20 @@ try {
   await med.getByLabel('Medicine name').press('Enter');
   await med.getByLabel('Dose', { exact: true }).fill('2 capsules');
   await med.getByLabel('Dose', { exact: true }).press('Enter');
-  await med.getByLabel('Dose time 1').fill('08:30');
-  await settings.waitForFunction(() =>
-    window.aquamate.getState().then((s) => s.settings.reminders.some((r) => r.name === 'Vitamin D' && r.dose === '2 capsules' && r.times[0] === '08:30')),
+  const doseAt = hhmm(); // due right now
+  await med.getByLabel('Dose time 1').fill(doseAt);
+  await settings.waitForFunction(
+    (at) => window.aquamate.getState().then((s) => s.settings.reminders.some((r) => r.name === 'Vitamin D' && r.dose === '2 capsules' && r.times[0] === at)),
+    doseAt,
   );
   const medId = (await state()).settings.reminders.find((r) => r.type === 'medicine').id;
   const medSaved = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders.find((r) => r.id === medId);
   assert.deepEqual([medSaved.repeatEveryMinutes, medSaved.repeatTimes], [10, 3], '"remind again until taken" is on by default');
   assert.ok((await state()).status.reminders[medId].nextAt, 'scheduled');
+  step("Today's medicine strip: the dose is due now, with “Took it”");
+  const todayMed = settings.getByTestId('today-med');
+  await todayMed.locator('[data-state=due]').getByText('due now').waitFor();
+  assert.equal(await todayMed.getByRole('button', { name: 'Took it' }).count(), 1);
   await med.scrollIntoViewIfNeeded();
   await settings.screenshot({ path: join(OUT, '12-medicine-settings.png') });
 
@@ -505,6 +513,9 @@ try {
   assert.equal(medStatus.times.length, 1);
   assert.equal((await state()).status.glassesToday, glassesBefore, 'a sip, not a glass');
   await med.getByTestId('medicine-status').getByText(/^Taken today at /).waitFor();
+  await todayMed.locator('[data-state=taken]').getByText(/✓ taken /).waitFor();
+  assert.equal(await todayMed.getByRole('button', { name: 'Took it' }).count(), 0, 'nothing left to take today');
+  await settings.screenshot({ path: join(OUT, '15-today-medicine.png') });
 
   step('deleting the medicine reminder');
   settings.once('dialog', (d) => d.accept());

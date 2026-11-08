@@ -10,11 +10,16 @@ export interface TrayStatus {
   relaxing: boolean;
   /** Relax mode can start now (nothing else is on screen). */
   canRelax: boolean;
+  /** Reminders that are on, for "Remind me now" (water first). */
+  reminders: Array<{ id: string; label: string }>;
+  /** Medicine reminders, for "I took …". */
+  medicine: Array<{ id: string; name: string }>;
 }
 
 export interface TrayActions {
-  remindNow(): void;
+  remindNow(id?: string): void;
   logGlass(): void;
+  logDone(id: string): void;
   setRelax(on: boolean): void;
   pause(minutes: number | 'tomorrow'): void;
   resume(): void;
@@ -67,8 +72,11 @@ export class AppTray {
         { label: progress, enabled: false },
         { label: schedule, enabled: false },
         { type: 'separator' },
-        { label: 'Remind me now', click: () => a.remindNow() },
+        s.reminders.length > 1
+          ? { label: 'Remind me now', submenu: s.reminders.map((r) => ({ label: r.label, click: () => a.remindNow(r.id) })) }
+          : { label: 'Remind me now', click: () => a.remindNow() },
         { label: 'I drank a glass 💧', click: () => a.logGlass() },
+        ...s.medicine.map((m) => ({ label: `I took ${m.name} 💊`, click: () => a.logDone(m.id) })),
         {
           label: 'Relax mode 🌿',
           type: 'checkbox',

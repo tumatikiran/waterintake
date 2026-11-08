@@ -28,6 +28,8 @@ const app = await electron.launch({ executablePath: require('electron'), args, e
 const errors = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const step = (msg) => console.log(`  • ${msg}`);
+const hhmm = (t = new Date()) => `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+
 
 try {
   const page = await app.firstWindow();
@@ -149,7 +151,12 @@ try {
   const med = page.getByTestId('medicine').first();
   await med.getByLabel('Medicine name').fill('Vitamin D');
   await med.getByLabel('Medicine name').press('Enter');
-  await page.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.some((r) => r.name === 'Vitamin D')));
+  const doseAt = hhmm();
+  await med.getByLabel('Dose time 1').fill(doseAt);
+  await page.waitForFunction(
+    (at) => window.aquamate.getState().then((s) => s.settings.reminders.some((r) => r.name === 'Vitamin D' && r.times[0] === at)),
+    doseAt,
+  );
   const medId = (await state()).settings.reminders.find((r) => r.type === 'medicine').id;
   const medPlan = (await pending()).filter((p) => p.reminderId === medId);
   assert.ok(medPlan.length >= 1, 'the medicine is scheduled');
@@ -172,10 +179,31 @@ try {
   await sceneClosed(25000);
   assert.equal((await state()).status.reminders[medId].done, 1);
   assert.equal((await state()).status.glassesToday, 3, 'a sip, not a glass');
+
+  step("Today screen: today's medicine checklist, and a card asking for exact alarms when Android doesn't allow them");
+  await page.getByRole('tab', { name: 'Today' }).click();
+  const todayMed = page.getByTestId('today-med');
+  await todayMed.locator('[data-state=taken]').getByText(/✓ taken /).waitFor();
+  assert.equal(await page.getByTestId('exact-alarms-card').count(), 0, 'allowed (or not needed): no card');
+  await page.evaluate(() => {
+    window.__aquamateExactAlarms = {
+      checkExactNotificationSetting: async () => ({ exact_alarm: 'denied' }),
+      changeExactNotificationSetting: async () => ({ exact_alarm: 'granted' }),
+    };
+    window.Capacitor.Plugins.App.notifyListeners('resume', {}); // re-checked when the app comes back
+  });
+  await page.getByTestId('exact-alarms-card').waitFor();
+  await shot('m12-today-medicine.png');
+  await page.getByTestId('exact-alarms-card').getByRole('button', { name: 'Allow' }).click();
+  await page.getByTestId('exact-alarms-card').waitFor({ state: 'detached' });
+  await page.evaluate(() => delete window.__aquamateExactAlarms);
+
+  await page.getByRole('tab', { name: 'Reminders' }).click();
   page.once('dialog', (d) => d.accept());
   await med.getByRole('button', { name: 'Delete' }).click();
   await page.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.length === 1));
   await page.getByRole('tab', { name: 'Today' }).click();
+  assert.equal(await page.getByTestId('today-medicine').count(), 0, 'no medicine, no checklist');
 
   step('reminder settings save to app storage and re-plan the notifications');
   await page.getByRole('tab', { name: 'Reminders' }).click();
@@ -373,6 +401,21 @@ try {
   await page.getByTestId('home-bubble').getByText(/All refreshed!/).waitFor({ timeout: 10000 });
   await homeAnim('Idle', 10000);
   await page.evaluate(() => window.aquamate.updateSettings({ relax: { dozeAfterMinutes: 3 } }));
+
+  step('while relaxing on the Today screen, water notifications are held back, and come back after');
+  const waterSoon = async () => (await pending()).filter((p) => p.reminderId === 'water' && p.at < Date.now() + 50 * 60_000).length;
+  assert.ok((await waterSoon()) > 0);
+  await page.getByRole('button', { name: 'Relax 🌿' }).click();
+  await page.waitForFunction(() => window.aquamate.getState().then((s) => s.status.relaxing));
+  await page.waitForFunction(
+    () => window.Capacitor.Plugins.LocalNotifications.getPending().then(({ notifications }) => !notifications.some((n) => n.extra?.reminderId === 'water' && new Date(n.schedule.at).getTime() < Date.now() + 50 * 60_000)),
+    null,
+    { timeout: 5000 },
+  );
+  await page.getByRole('button', { name: 'Wake up' }).click();
+  await page.waitForFunction(() => window.aquamate.getState().then((s) => !s.status.relaxing));
+  await homeAnim('Idle', 15000);
+  assert.ok((await waterSoon()) > 0, 'back after relaxing');
 
   step('settings and the glass count survive a restart');
   await page.reload();

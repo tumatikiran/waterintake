@@ -128,6 +128,13 @@ function pickFile(accept: string): Promise<File | null> {
   });
 }
 
+/**
+ * Exact-alarm settings (Android 12+). In a browser the plugin doesn't implement
+ * them; the UI tests supply a stand-in on window.__aquamateExactAlarms.
+ */
+type ExactAlarmApi = Pick<typeof LocalNotifications, 'checkExactNotificationSetting' | 'changeExactNotificationSetting'>;
+const exactAlarmApi = (): ExactAlarmApi => (window as unknown as { __aquamateExactAlarms?: ExactAlarmApi }).__aquamateExactAlarms ?? LocalNotifications;
+
 const vibrate = () => Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
 
 export async function createMobileBridge(): Promise<AquaMateApi> {
@@ -170,10 +177,15 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
 
   // ----------------------------------------------------------------- state
   let permission: NotificationPermission = await checkPermission();
+  let exactAlarms: NotificationPermission = await checkExactAlarms();
   let reminderActive = false;
   let activeReminder: Reminder | null = null;
   let relaxing = false; // Relax mode on the Today screen (not saved: it ends when the app closes)
   let relaxTimer: number | undefined; // "Relax for": ends Relax mode by itself
+  // While relaxing, reminders that wait for Relax mode (water) are held back until this time.
+  // Bounded, because Relax mode isn't saved: if the app is closed meanwhile, they still come.
+  let relaxHold: number | null = null;
+  const RELAX_HOLD_MINUTES = 60;
   const stateChannel = new Channel<AppState>();
   const startChannel = new Channel<ReminderContext>(true);
   const visibleChannel = new Channel<boolean>(true);
@@ -199,6 +211,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
         dataPath: 'This phone (private app storage)',
         mobile: true,
         notifications: permission,
+        exactAlarms,
       },
     };
   }
@@ -212,6 +225,16 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       return display === 'granted' ? 'granted' : display === 'denied' ? 'denied' : 'prompt';
     } catch {
       return 'denied';
+    }
+  }
+
+  /** Android 12+ asks before apps may use exact alarms; elsewhere (and in a browser) it doesn't apply. */
+  async function checkExactAlarms(): Promise<NotificationPermission> {
+    try {
+      const { exact_alarm } = await exactAlarmApi().checkExactNotificationSetting();
+      return exact_alarm === 'granted' ? 'granted' : exact_alarm === 'denied' ? 'denied' : 'prompt';
+    } catch {
+      return 'granted';
     }
   }
 
@@ -253,8 +276,10 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
             id: REMINDER_IDS.first + i,
             title,
             body,
-            // Inexact but battery-friendly: Android may deliver a few minutes late.
             schedule: { at: new Date(p.at), allowWhileIdle: true },
+            // Water is inexact (battery-friendly; a few minutes late is fine). Medicine is exact
+            // once allowed; asking is left to the Today screen's card, never sprung on the user.
+            isExactNotification: r.type === 'medicine' && exactAlarms === 'granted',
             channelId: NOTIFY[r.type].channel,
             actionTypeId: NOTIFY[r.type].actionType,
             smallIcon: 'ic_stat_aquamate',
@@ -287,7 +312,8 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       }
       const first = schedule.slots[r.id];
       if (!first || first.nextAt === null) return [];
-      const at = first.nextAt;
+      // Came due while held back (Relax mode): it fires a minute from now.
+      const at = Math.max(first.nextAt, now + 60_000);
       const sameDay = startOfDay(at) === startOfDay(now);
       // Then the ones after it, as if each passed unanswered (medicine plans its repeats).
       const rest = planChain(next, {
@@ -299,7 +325,13 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       });
       return [{ at, snoozed: first.snoozed }, ...rest].map(tag);
     });
-    return mergePlans(plans, REMINDER_IDS.count, settings.reminders.map((r) => typeOf(r).planReserve));
+    // Relaxing: reminders that wait (water) are held back until Relax mode ends; one that came due meanwhile fires then.
+    const held = (p: Planned) => {
+      const r = settings.reminders.find((x) => x.id === p.reminderId);
+      return relaxHold !== null && p.at < relaxHold && !!r && typeOf(r).duringRelax === 'wait';
+    };
+    const visible = plans.map((plan) => plan.filter((p) => !held(p)));
+    return mergePlans(visible, REMINDER_IDS.count, settings.reminders.map((r) => typeOf(r).planReserve));
   }
 
   async function apply(): Promise<void> {
@@ -381,6 +413,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
   });
   void App.addListener('resume', async () => {
     permission = await checkPermission();
+    exactAlarms = await checkExactAlarms();
     await refreshPlan();
   });
   // Keep "paused until" and the date fresh while the app stays open.
@@ -433,14 +466,17 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       window.clearTimeout(relaxTimer);
       const minutes = settings.relax.durationMinutes;
       if (on && minutes > 0) relaxTimer = window.setTimeout(() => api.setRelax(false), minutes * 60_000);
-      push();
+      relaxHold = on ? Date.now() + (minutes > 0 ? minutes : RELAX_HOLD_MINUTES) * 60_000 : null;
+      void apply(); // hold water back while relaxing (or bring it back now)
     },
-    async logGlass() {
-      daily = withDone(daily, WATER_ID);
+    logGlass: () => api.logDone(WATER_ID),
+    async logDone(id) {
+      if (!settings.reminders.some((r) => r.id === id)) return 0;
+      daily = withDone(daily, id);
       await writePref('today', daily);
       void vibrate();
-      await reschedule('done', WATER_ID);
-      return doneToday(WATER_ID);
+      await reschedule('done', id);
+      return doneToday(id);
     },
     pause(minutes) {
       const until =
@@ -552,6 +588,16 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
 
     mobile: {
       onReminderVisible: (cb) => visibleChannel.on(cb),
+      async requestExactAlarms() {
+        try {
+          const { exact_alarm } = await exactAlarmApi().changeExactNotificationSetting();
+          exactAlarms = exact_alarm === 'granted' ? 'granted' : exact_alarm === 'denied' ? 'denied' : 'prompt';
+        } catch {
+          exactAlarms = await checkExactAlarms();
+        }
+        await apply(); // re-plan medicine as exact alarms
+        return exactAlarms;
+      },
       async requestNotifications() {
         try {
           const { display } = await LocalNotifications.requestPermissions();

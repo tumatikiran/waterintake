@@ -269,3 +269,16 @@ html[data-view='settings'] .muted { color: var(--muted); }
   .app-header .today-text .muted { display: none; }
 }
 .hint .warn { color: var(--warn); }
+
+/* Today's medicine (settings header strip and Android Today screen) */
+.today-meds { display: flex; flex-direction: column; gap: 6px; margin: 0 0 14px; padding: 10px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.today-med { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.today-med-name { font-weight: 650; min-width: 0; }
+.doses { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; flex: 1; }
+.dose { padding: 3px 9px; border-radius: 999px; font-size: 12.5px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.dose-time { font-weight: 650; color: var(--text); }
+.dose.is-taken { background: var(--success-soft); color: var(--success-ink); }
+.dose.is-taken .dose-time { color: inherit; }
+.dose.is-due { background: var(--accent-soft); color: var(--accent-ink); }
+.dose.is-missed { background: var(--danger-soft); color: var(--danger); }
+.app > .today-meds { margin: 0 24px 12px; }

@@ -92,3 +92,15 @@ test("Android's notification plan: frequent water can't crowd out tomorrow's med
   assert.deepEqual(plan.map((p) => p.at), [...plan.map((p) => p.at)].sort((a, b) => a - b), 'in time order');
   assert.deepEqual(S.mergePlans([water], 8, [2]).map((p) => p.at), water.slice(0, 8).map((p) => p.at), 'one reminder: just the soonest');
 });
+
+test("Today's checklist: taken (with the time), due, missed, upcoming; and which dose 'Took it' counts for", () => {
+  const r = med({ times: ['08:00', '13:00', '20:00'] });
+  const doses = S.dosesToday(r, [t(8, 6)], t(13, 10));
+  assert.deepEqual(doses.map((d) => [d.state, d.takenAt]), [['taken', t(8, 6)], ['due', null], ['upcoming', null]]);
+  assert.equal(S.doseToTake(doses, t(13, 10)).at, t(13));
+  const later = S.dosesToday(r, [t(8, 6)], t(15));
+  assert.deepEqual(later.map((d) => d.state), ['taken', 'missed', 'upcoming']);
+  assert.equal(S.doseToTake(later, t(15)).at, t(13), 'a missed dose can still be marked');
+  assert.equal(S.doseToTake(later, t(19, 30)).at, t(20), 'the next one, from an hour before');
+  assert.deepEqual(S.dosesToday(med({ enabled: false }), [], t(9)), []);
+});

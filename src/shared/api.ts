@@ -35,6 +35,8 @@ export interface AquaMateApi {
   /** Shows a reminder now (the water reminder when no id is given). */
   testReminder(id?: string): void;
   logGlass(): Promise<number>;
+  /** Logs a reminder as done without being reminded ("Took it" on the Today checklist); returns today's count. */
+  logDone(id: string): Promise<number>;
   pause(minutes: number | 'tomorrow'): void;
   resume(): void;
   /** Turns Relax mode on or off. A reminder also ends it (the companion gets up to remind you). */
@@ -65,5 +67,7 @@ export interface AquaMateApi {
   mobile?: {
     onReminderVisible(cb: (visible: boolean) => void): Unsubscribe;
     requestNotifications(): Promise<NotificationPermission>;
+    /** Opens Android's "Alarms & reminders" setting so medicine can arrive on time. */
+    requestExactAlarms(): Promise<NotificationPermission>;
   };
 }

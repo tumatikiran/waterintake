@@ -122,7 +122,8 @@ function main(): void {
   const water = () => waterReminder(settings.reminders);
 
   const tray = new AppTray(path.join(APP_ROOT, 'assets', 'tray'), {
-    remindNow: () => startReminder(water(), 'manual'),
+    remindNow: (id) => startReminder(settings.reminders.find((r) => r.id === id) ?? water(), 'manual'),
+    logDone: (id) => logDone(id),
     logGlass: () => logGlass(),
     setRelax: (on) => setRelax(on),
     pause: (minutes) => pause(minutes),
@@ -160,6 +161,8 @@ function main(): void {
       pausedUntil: state.status.pausedUntil,
       relaxing: state.status.relaxing,
       canRelax: !windows.relaxing && !windows.busy, // nothing else on screen
+      reminders: settings.reminders.filter((r) => r.enabled).map((r) => ({ id: r.id, label: `${typeOf(r).icon} ${r.type === 'water' ? 'Water' : r.name}` })),
+      medicine: settings.reminders.filter((r) => r.type === 'medicine' && r.enabled).map((r) => ({ id: r.id, name: r.name })),
     });
   }
 
@@ -203,12 +206,14 @@ function main(): void {
     if (on && windows.relaxing && durationMinutes > 0) relaxTimer = setTimeout(() => setRelax(false), durationMinutes * 60_000);
   }
 
-  /** A glass logged without a reminder (tray, "+ 1 glass"). */
-  function logGlass(): number {
-    const count = log.done(WATER_ID);
-    scheduler.reschedule(WATER_ID, 'done');
+  /** Done without a reminder (tray, "+ 1 glass", "Took it" on the Today checklist). */
+  function logDone(id: string): number {
+    if (!settings.reminders.some((r) => r.id === id)) return 0;
+    const count = log.done(id);
+    scheduler.reschedule(id, 'done');
     return count;
   }
+  const logGlass = () => logDone(WATER_ID);
 
   function pause(minutes: unknown): void {
     if (minutes === 'tomorrow') {
@@ -264,6 +269,10 @@ function main(): void {
   ipcMain.handle('glass:log', (e) => {
     if (!fromSettings(e)) throw new Error('Not allowed');
     return logGlass();
+  });
+  ipcMain.handle('reminders:done', (e, id: unknown) => {
+    if (!fromSettings(e) || typeof id !== 'string') throw new Error('Not allowed');
+    return logDone(id);
   });
   ipcMain.on('reminders:pause', (e, minutes: unknown) => fromSettings(e) && pause(minutes));
   ipcMain.on('reminders:resume', (e) => fromSettings(e) && scheduler.resume());

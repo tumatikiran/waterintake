@@ -19,6 +19,7 @@ const api: AquaMateApi = {
   removeReminder: (id) => ipcRenderer.invoke('reminders:remove', id),
   testReminder: (id) => ipcRenderer.send('reminder:test', id),
   logGlass: () => ipcRenderer.invoke('glass:log'),
+  logDone: (id) => ipcRenderer.invoke('reminders:done', id),
   pause: (minutes) => ipcRenderer.send('reminders:pause', minutes),
   resume: () => ipcRenderer.send('reminders:resume'),
   setRelax: (on) => ipcRenderer.send('relax:set', on === true),

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { AppState } from '../../shared/types';
+import type { AppState, MedicineReminder } from '../../shared/types';
+import { doseToTake, dosesToday, type DoseStatus } from '../../shared/schedule';
 
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -67,5 +68,51 @@ export function AboutPanel({ state }: { state: AppState }) {
         <p className="muted">MIT licensed. Desktop-window techniques adapted from sharada-dev/hydrate-buddy (MIT).</p>
       </section>
     </div>
+  );
+}
+
+/**
+ * Today's medicine: each dose with what happened to it (taken at 12:04, due,
+ * missed, later), and "Took it" for the dose that's due now. Nothing when
+ * there are no medicine reminders today.
+ */
+export function TodayMedicine({ state, now }: { state: AppState; now: number }) {
+  const meds = state.settings.reminders
+    .filter((r): r is MedicineReminder => r.type === 'medicine' && r.enabled)
+    .map((m) => {
+      const doses = dosesToday(m, state.status.reminders[m.id]?.times ?? [], now);
+      return { m, doses, take: doseToTake(doses, now) };
+    })
+    .filter((x) => x.doses.length > 0);
+  if (!meds.length) return null;
+  const label: Record<DoseStatus['state'], (d: DoseStatus) => string> = {
+    taken: (d) => `taken ${clock(d.takenAt!)}`,
+    due: () => 'due now',
+    missed: () => 'missed',
+    upcoming: () => 'later',
+  };
+  return (
+    <section className="today-meds" aria-label="Today's medicine" data-testid="today-medicine">
+      {meds.map(({ m, doses, take }) => (
+        <div className="today-med" key={m.id} data-testid="today-med">
+          <span className="today-med-name">
+            <span aria-hidden>💊</span> {m.name}
+            {m.dose && <span className="muted"> · {m.dose}</span>}
+          </span>
+          <ul className="doses">
+            {doses.map((d) => (
+              <li key={d.at} className={`dose is-${d.state}`} data-state={d.state}>
+                <span className="dose-time">{clock(d.at)}</span> <span className="dose-state">{d.state === 'taken' ? '✓ ' : ''}{label[d.state](d)}</span>
+              </li>
+            ))}
+          </ul>
+          {take && (
+            <button type="button" className="btn btn-ghost btn-small" onClick={() => window.aquamate.logDone(m.id)} title={`Log the ${clock(take.at)} dose as taken`}>
+              Took it
+            </button>
+          )}
+        </div>
+      ))}
+    </section>
   );
 }

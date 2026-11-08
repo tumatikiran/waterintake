@@ -193,6 +193,8 @@ export interface AppState {
     dataPath: string;
     mobile: boolean;
     notifications?: 'granted' | 'denied' | 'prompt'; // Android
+    /** Android 12+: may reminders use exact alarms (medicine on time)? 'granted' where it doesn't apply. */
+    exactAlarms?: 'granted' | 'denied' | 'prompt';
   };
 }
 

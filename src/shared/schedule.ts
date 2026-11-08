@@ -262,3 +262,34 @@ export function nextDoseTime(r: DoseSchedule, { now, doneTimes, after }: NextInp
   }
   return candidates.length ? Math.min(...candidates) : null;
 }
+
+/** One of today's doses, for the Today checklist. */
+export interface DoseStatus {
+  at: number;
+  state: 'taken' | 'due' | 'missed' | 'upcoming';
+  takenAt: number | null;
+}
+
+/**
+ * Today's doses and what happened to each: taken (and when), due (its time
+ * has come; still within the reminders or the first half hour), missed, or
+ * upcoming.
+ */
+export function dosesToday(r: DoseSchedule, doneTimes: number[], now: number): DoseStatus[] {
+  if (!r.enabled) return [];
+  const times = doseTimes(r, startOfDay(now));
+  return times.map((at, i) => {
+    const nextDose = times[i + 1] ?? null;
+    const takenAt = doneTimes.find((t) => t >= at - TAKEN_EARLY && (nextDose === null || t < nextDose - TAKEN_EARLY)) ?? null;
+    if (takenAt !== null) return { at, state: 'taken', takenAt };
+    if (at > now) return { at, state: 'upcoming', takenAt };
+    let dueUntil = at + Math.max(r.repeatEveryMinutes * r.repeatTimes, 30) * MINUTE;
+    if (nextDose !== null) dueUntil = Math.min(dueUntil, nextDose - TAKEN_EARLY);
+    return { at, state: now < dueUntil ? 'due' : 'missed', takenAt };
+  });
+}
+
+/** The dose "Took it" would count for: due, missed or coming up within the hour (null: nothing to take now). */
+export function doseToTake(doses: DoseStatus[], now: number): DoseStatus | null {
+  return doses.find((d) => d.state === 'due') ?? doses.find((d) => d.state === 'upcoming' && d.at - now <= TAKEN_EARLY) ?? doses.filter((d) => d.state === 'missed').pop() ?? null;
+}
