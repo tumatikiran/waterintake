@@ -1,10 +1,12 @@
 # AquaMate 💧
 
-A 3D companion for **Windows, macOS and Android** that reminds you to drink
-water. When it's time, a character walks onto your screen carrying a water
-bottle and waves at you. Tell him you drank water and he drinks with you and
-cheers. Pick **Drink Later** and he sighs and trudges sadly across your whole
-screen, or back the way he came if you prefer.
+A 3D companion for **Windows, macOS and Android** that helps with your daily
+routine: drinking water, taking your medicine, and taking a moment to relax.
+When it's time, a character walks onto your screen carrying what the reminder
+is for (a water bottle, a pill bottle) and waves at you. Tell him you drank
+water and he drinks with you and cheers; say you took your medicine and he
+takes a tablet with you. Pick **Drink Later** and he sighs and trudges sadly
+across your whole screen, or back the way he came if you prefer.
 
 Built with Electron (desktop), Capacitor (Android), React, TypeScript, three.js
 and React Three Fiber. Both apps share the same characters, animations,
@@ -17,6 +19,10 @@ reminder rules and screens.
 | "Drink Later": a sad walk across the screen |
 | --- |
 | ![Sad walk](docs/sad-walk.png) |
+
+| Medicine reminder | "I Took It" | Today's medicine and its settings |
+| --- | --- | --- |
+| ![Medicine reminder](docs/medicine.png) | ![Taking a tablet](docs/taking-medicine.png) | ![Medicine settings](docs/settings-medicine.png) |
 
 | Settings | Character creator | Your own characters |
 | --- | --- | --- |
@@ -43,6 +49,9 @@ shows through.</sub>
   default). Medicine wakes your companion from Relax mode, and goes first if
   water is due at the same time. A dose counts as taken if you answer up to
   an hour early.
+- **Today's medicine** sits under today's progress: each dose as taken (with
+  the time), due, missed or later, and **Took it** to log one you took
+  without a reminder.
 - **Drink Later** makes him sigh, shake his head and walk slowly away with a
   sad face.
 - You choose how he leaves, whether you drank or not: **across the whole
@@ -84,8 +93,9 @@ medicine you can't miss.
 - An optional system notification, for when a full-screen app hides the
   companion.
 - AquaMate lives in the **menu bar (macOS) or system tray (Windows)**, with
-  *Remind me now*, *I drank a glass*, *Relax mode*, *Pause for 1 hour*, *Pause until
-  tomorrow* and *Settings…*. Closing the settings window keeps it running.
+  *Remind me now* (for any of your reminders), *I drank a glass*, *I took …*
+  for each medicine, *Relax mode*, *Pause for 1 hour*, *Pause until tomorrow*
+  and *Settings…*. Closing the settings window keeps it running.
 - **Start at login** (installed app).
 
 **Characters**
@@ -113,7 +123,11 @@ creator and reminder rules:
 - Reminders arrive as **notifications with "I drank water" / "Drink later"
   (or "I took it" / "Later" for medicine) buttons**, even when the app is
   closed. Tapping one opens the animated scene. Medicine has its own
-  notification channel, so you can make it louder in Android's settings.
+  notification channel, so you can make it louder in Android's settings, and
+  arrives exactly on time once you allow **Alarms & reminders** (the Today
+  screen asks).
+- While you relax on the Today screen, water notifications are held back
+  until you're done.
 - The character lives on a **Today** screen, where he drinks along when you log
   a glass. **Relax** sits him down right there; tap him (or **Wake up**) to
   get him up. Logging a glass while he relaxes gets him up to drink along.
@@ -321,6 +335,10 @@ This builds both apps, then runs three kinds of tests:
     deleted) and is the one on stage throughout every interaction: walking
     in, waiting, drinking, Drink Later, × and leaving. The Android suite
     checks the same on the Today screen and in the reminder scene.
+  - **Today's medicine:** the strip shows the dose as due with **Took it**,
+    then as taken after the reminder. On Android: the checklist, the
+    exact-alarm card appearing and going away once allowed, and water
+    notifications held back while relaxing.
   - **Medicine:** add a medicine reminder (name, dose, time) and it's saved
     with "remind again until taken" on; it walks in with the pill bottle and
     its own wording and buttons; **I Took It** plays taking the tablet and a

@@ -38,9 +38,18 @@ experience without that.
   walk and snoozes.
 - If a reminder comes due while the app is open, the scene plays right away,
   like on desktop.
-- **Timing:** Android may deliver a reminder a few minutes late to save
-  battery. Exact alarms would need a permission that Google Play only allows
-  for alarm-clock apps.
+- **Timing:** water reminders use inexact alarms, so Android may deliver them a
+  few minutes late to save battery. Medicine uses exact alarms once you allow
+  **Alarms & reminders** for AquaMate (Android 12+): when it isn't allowed,
+  the Today screen shows a **Medicine on time** card with an **Allow** button.
+  The app never opens that setting by itself.
+- **Relax mode:** while you relax on the Today screen, water notifications
+  are held back until you finish (for at most an hour when relaxing "until I
+  stop", since Relax mode ends if the app is closed). Medicine still arrives.
+- **Medicine:** has its own notification channel ("Medicine reminders") with
+  **I took it** / **Later** buttons; its repeats ("remind again until taken")
+  are planned ahead, and each kind of reminder keeps room in the 8 planned
+  notifications.
 - **Permission:** Android 13 and later ask for notification permission. The
   Today screen and the Reminders tab show an **Allow** button until you grant
   it.
