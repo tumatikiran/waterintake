@@ -143,6 +143,40 @@ try {
   await sceneClosed(25000);
   assert.equal((await state()).status.glassesToday, 3);
 
+  step('medicine on the phone: add it, it is planned as its own notification, and its button plays "took it"');
+  await page.getByRole('tab', { name: 'Reminders' }).click();
+  await page.getByRole('button', { name: '+ Add medicine' }).click();
+  const med = page.getByTestId('medicine').first();
+  await med.getByLabel('Medicine name').fill('Vitamin D');
+  await med.getByLabel('Medicine name').press('Enter');
+  await page.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.some((r) => r.name === 'Vitamin D')));
+  const medId = (await state()).settings.reminders.find((r) => r.type === 'medicine').id;
+  const medPlan = (await pending()).filter((p) => p.reminderId === medId);
+  assert.ok(medPlan.length >= 1, 'the medicine is scheduled');
+  assert.equal(medPlan[0].body, 'Time for your Vitamin D (1 tablet) 💊');
+  assert.equal(medPlan[0].actionTypeId, 'AQUAMATE_MEDICINE');
+  assert.equal((await pending()).length, 8, 'still 8 at most, water and medicine together');
+  await med.scrollIntoViewIfNeeded();
+  await shot('m11-medicine-settings.png');
+  await page.evaluate(
+    (id) =>
+      window.Capacitor.Plugins.LocalNotifications.notifyListeners('localNotificationActionPerformed', {
+        actionId: 'done',
+        notification: { id: 1001, title: 'AquaMate 💊', body: '', extra: { kind: 'reminder', reminderId: id, snoozed: false } },
+      }),
+    medId,
+  );
+  await page.waitForSelector('[data-testid=reminder-scene].is-open');
+  await sceneAnim('TakeTablet', 20000);
+  await sceneAnim('Drink', 10000);
+  await sceneClosed(25000);
+  assert.equal((await state()).status.reminders[medId].done, 1);
+  assert.equal((await state()).status.glassesToday, 3, 'a sip, not a glass');
+  page.once('dialog', (d) => d.accept());
+  await med.getByRole('button', { name: 'Delete' }).click();
+  await page.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.length === 1));
+  await page.getByRole('tab', { name: 'Today' }).click();
+
   step('reminder settings save to app storage and re-plan the notifications');
   await page.getByRole('tab', { name: 'Reminders' }).click();
   await page.getByLabel('Interval').selectOption('30');
@@ -238,7 +272,7 @@ try {
   await upload(good);
   await page.getByText('Robo Buddy is now your companion').waitFor({ timeout: 30000 });
   st = await state();
-  assert.deepEqual(st.characters.find((c) => c.name === 'Robo Buddy')?.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
+  assert.deepEqual(st.characters.find((c) => c.name === 'Robo Buddy')?.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'TakeTablet', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
 
   step('the active character stars on the Today screen and in reminders');
   await page.getByRole('tab', { name: 'Today' }).click();

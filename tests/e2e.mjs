@@ -308,7 +308,7 @@ try {
   st = await state();
   const robo = st.characters.find((c) => c.name === 'Robo Buddy');
   assert.ok(robo && robo.kind === 'uploaded');
-  assert.deepEqual(robo.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
+  assert.deepEqual(robo.animations, ['Idle', 'Walk', 'Wave', 'Drink', 'Happy', 'Sad', 'SadWalk', 'Run', 'TakeTablet', 'SitDown', 'Relax', 'StandUp', 'Doze', 'Stretch']);
   assert.equal(st.settings.characterId, robo.id);
   await settings.locator('.preview-loading').waitFor({ state: 'detached', timeout: 15000 });
   await settings.getByRole('button', { name: 'Drink' }).click();
@@ -459,6 +459,58 @@ try {
   assert.equal(await companion(), 'waking', 'never dozed: "Never" means never');
   await phase('hidden', 40000);
   await settings.evaluate(() => window.aquamate.updateSettings({ relax: { dozeAfterMinutes: 3, durationMinutes: 0 } }));
+
+  step('medicine: add a reminder in Settings → Reminders, with a name, dose and time');
+  await settings.getByRole('tab', { name: 'Reminders' }).click();
+  await settings.getByRole('button', { name: '+ Add medicine' }).click();
+  const med = settings.getByTestId('medicine').first();
+  await med.waitFor();
+  await med.getByLabel('Medicine name').fill('Vitamin D');
+  await med.getByLabel('Medicine name').press('Enter');
+  await med.getByLabel('Dose', { exact: true }).fill('2 capsules');
+  await med.getByLabel('Dose', { exact: true }).press('Enter');
+  await med.getByLabel('Dose time 1').fill('08:30');
+  await settings.waitForFunction(() =>
+    window.aquamate.getState().then((s) => s.settings.reminders.some((r) => r.name === 'Vitamin D' && r.dose === '2 capsules' && r.times[0] === '08:30')),
+  );
+  const medId = (await state()).settings.reminders.find((r) => r.type === 'medicine').id;
+  const medSaved = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders.find((r) => r.id === medId);
+  assert.deepEqual([medSaved.repeatEveryMinutes, medSaved.repeatTimes], [10, 3], '"remind again until taken" is on by default');
+  assert.ok((await state()).status.reminders[medId].nextAt, 'scheduled');
+  await med.scrollIntoViewIfNeeded();
+  await settings.screenshot({ path: join(OUT, '12-medicine-settings.png') });
+
+  step('medicine reminder: walks in carrying the pill bottle, with its own wording and buttons');
+  const glassesBefore = (await state()).status.glassesToday;
+  await med.getByRole('button', { name: 'Try it now' }).click();
+  await phase('arrive');
+  await waitDebug(() => window.__aquamateDebug.walking, null, 15000);
+  assert.equal((await debug()).prop, 'pillBottle');
+  await phase('waiting', 20000);
+  await card.getByText('Time for your Vitamin D (2 capsules) 💊').waitFor();
+  assert.equal(await card.getByRole('button', { name: 'Drink Later' }).count(), 0);
+  await shot('13-medicine-reminder.png');
+
+  step('"I Took It": a tablet from the pill bottle to the mouth, a sip of water, logged as taken');
+  await card.getByRole('button', { name: 'I Took It' }).click();
+  await phase('tookMedicine');
+  await waitAnim('TakeTablet', 10000);
+  await sleep(1800);
+  await shot('14-taking-tablet.png');
+  await waitAnim('Drink', 10000);
+  assert.equal((await debug()).prop, 'waterBottle', 'washed down with water');
+  await phase('hidden', 40000);
+  const medStatus = (await state()).status.reminders[medId];
+  assert.equal(medStatus.done, 1);
+  assert.equal(medStatus.times.length, 1);
+  assert.equal((await state()).status.glassesToday, glassesBefore, 'a sip, not a glass');
+  await med.getByTestId('medicine-status').getByText(/^Taken today at /).waitFor();
+
+  step('deleting the medicine reminder');
+  settings.once('dialog', (d) => d.accept());
+  await med.getByRole('button', { name: 'Delete' }).click();
+  await settings.waitForFunction(() => window.aquamate.getState().then((s) => s.settings.reminders.length === 1));
+  assert.equal(await settings.getByTestId('medicine').count(), 0);
 
   assert.deepEqual(errors, [], 'no renderer errors');
   console.log('\n✅ AquaMate end-to-end tests passed');

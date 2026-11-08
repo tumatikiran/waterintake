@@ -15,6 +15,8 @@ const api: AquaMateApi = {
   onState: (cb: (state: AppState) => void) => subscribe<[AppState]>('state', cb),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
   updateReminder: (id, patch) => ipcRenderer.invoke('reminders:update', id, patch),
+  addReminder: (type) => ipcRenderer.invoke('reminders:add', type),
+  removeReminder: (id) => ipcRenderer.invoke('reminders:remove', id),
   testReminder: (id) => ipcRenderer.send('reminder:test', id),
   logGlass: () => ipcRenderer.invoke('glass:log'),
   pause: (minutes) => ipcRenderer.send('reminders:pause', minutes),

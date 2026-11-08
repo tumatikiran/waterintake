@@ -1,4 +1,4 @@
-import type { DeepPartial, ExitPath, GeneralSettings, RelaxSettings, Reminder, Settings } from './types';
+import type { DeepPartial, ExitPath, GeneralSettings, RelaxSettings, Reminder, ReminderTypeId, Settings } from './types';
 import { LIMITS as REMINDER_LIMITS, REMINDER_TYPES, WATER_ID, sanitizeReminder } from './reminders';
 import { ALL_DAYS, bool, isObj } from './sanitize';
 
@@ -93,4 +93,18 @@ export function withReminderPatch(current: Settings, id: string, patch: Record<s
   if (!isObj(patch) || !current.reminders.some((r) => r.id === id)) return current;
   const reminders = current.reminders.map((r) => (r.id === id ? { ...r, ...patch, id: r.id, type: r.type } : r));
   return sanitizeSettings({ ...current, reminders });
+}
+
+/** Adds a new reminder of a type (singleton types can't be added twice). Returns the settings unchanged when it can't. */
+export function withReminderAdded(current: Settings, type: ReminderTypeId, id: string): Settings {
+  const def = REMINDER_TYPES[type];
+  if (!def || def.singleton || current.reminders.length >= LIMITS.reminders || current.reminders.some((r) => r.id === id)) return current;
+  return sanitizeSettings({ ...current, reminders: [...current.reminders, def.create(id)] });
+}
+
+/** Removes a reminder (the built-in water reminder can only be turned off). */
+export function withReminderRemoved(current: Settings, id: string): Settings {
+  const r = current.reminders.find((x) => x.id === id);
+  if (!r || REMINDER_TYPES[r.type].singleton) return current;
+  return { ...current, reminders: current.reminders.filter((x) => x.id !== id) };
 }

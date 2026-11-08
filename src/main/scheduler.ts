@@ -12,7 +12,8 @@ const RESPONSE_TIMEOUT_MS = 10 * 60_000;
 
 export interface SchedulerDeps {
   reminders(): Reminder[];
-  doneToday(id: string): number;
+  /** Today's log for a reminder: how often and when it was done. */
+  today(id: string): { done: number; times: number[] };
   pauseWhenAway(): boolean;
   isUserAway(): boolean;
   /** This reminder can't be shown right now (something else is on screen, or it waits for Relax mode to end). */
@@ -128,7 +129,8 @@ export class ReminderScheduler {
   }
 
   private compute(r: Reminder, after: ScheduleTrigger): void {
-    const nextAt = nextTime(r, { now: this.now(), doneToday: this.deps.doneToday(r.id), after });
-    this.slots.set(r.id, { nextAt, snoozed: after === 'later' });
+    const { done, times } = this.deps.today(r.id);
+    const nextAt = nextTime(r, { now: this.now(), doneToday: done, doneTimes: times, after });
+    this.slots.set(r.id, { nextAt, snoozed: after === 'later' || after === 'missed' });
   }
 }

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import type { AppState, GeneralSettings, TimeWindow, Weekday, WaterReminder } from '../../shared/types';
+import type { AppState, GeneralSettings, MedicineReminder, ReminderStatus, TimeWindow, Weekday, WaterReminder } from '../../shared/types';
 import { LIMITS, type SettingsPatch } from '../../shared/settings';
 import { WATER_ID, waterReminder } from '../../shared/reminders';
 import { reminderInterval } from '../../shared/schedule';
-import { Row, Section, Segmented, Select, Stepper, ToggleRow } from './controls';
+import { Row, Section, Segmented, Select, Stepper, Toggle, ToggleRow } from './controls';
 
 const update = (patch: SettingsPatch) => window.aquamate.updateSettings(patch);
 /** The water reminder (the only type so far that this panel edits). */
@@ -66,6 +66,8 @@ export function RemindersPanel({ state }: { state: AppState }) {
           <Select id="snooze" label="Snooze" value={r.snoozeMinutes} options={SNOOZES} onChange={(snoozeMinutes) => remind({ snoozeMinutes })} />
         </Row>
       </Section>
+
+      <MedicineSection state={state} />
 
       <Section
         title="When your companion leaves"
@@ -275,6 +277,167 @@ function ScheduleEditor({ schedule }: { schedule: TimeWindow[] }) {
           + Add time window
         </button>
         <p className="hint">Times past midnight work too, for example 22:00 to 06:00.</p>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ medicine
+const REPEAT_EVERY = [5, 10, 15, 30].map((m) => ({ value: m, label: `Every ${m} minutes` }));
+const REPEAT_TIMES = [1, 2, 3, 5].map((n) => ({ value: n, label: n === 1 ? 'Once' : `Up to ${n} times` }));
+const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+function MedicineSection({ state }: { state: AppState }) {
+  const meds = state.settings.reminders.filter((r): r is MedicineReminder => r.type === 'medicine');
+  const [error, setError] = useState<string | null>(null);
+  const add = async () => {
+    setError(null);
+    try {
+      await window.aquamate.addReminder('medicine');
+    } catch (err) {
+      setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : 'Could not add it.');
+    }
+  };
+  return (
+    <Section
+      title="Medicine"
+      description="Your companion brings your medicine at the times you set, and reminds you again until you've taken it. Medicine reminders wake them up from Relax mode."
+      aside={
+        <button type="button" className="btn btn-ghost btn-small" onClick={add} disabled={meds.length >= LIMITS.reminders - 1}>
+          + Add medicine
+        </button>
+      }
+    >
+      {meds.length === 0 && <p className="muted empty-note">No medicine reminders yet.</p>}
+      {error && <p className="hint warn">{error}</p>}
+      <div className="med-list">
+        {meds.map((m) => (
+          <MedicineCard key={m.id} m={m} status={state.status.reminders[m.id]} reminderActive={state.status.reminderActive} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/** A text field that saves when you leave it (or press Enter). */
+function TextField({ id, label, value, placeholder, maxLength, onSave }: { id: string; label: string; value: string; placeholder?: string; maxLength: number; onSave: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <input
+      id={id}
+      aria-label={label}
+      className="text-input"
+      value={draft}
+      maxLength={maxLength}
+      placeholder={placeholder}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => draft.trim() !== value && onSave(draft.trim())}
+      onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+    />
+  );
+}
+
+/** "Taken at 12:04", "Next: today at 18:00"… */
+function medicineStatus(m: MedicineReminder, s: ReminderStatus | undefined): string {
+  if (!m.enabled) return 'Off';
+  const taken = s?.times.length ? `Taken today at ${s.times.map(clock).join(', ')}` : 'Not taken yet today';
+  const day = (t: number) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (new Date(t).toDateString() === new Date().toDateString()) return 'today';
+    if (new Date(t).toDateString() === tomorrow.toDateString()) return 'tomorrow';
+    return new Date(t).toLocaleDateString([], { weekday: 'long' });
+  };
+  const next = s?.nextAt ? `next reminder ${day(s.nextAt)} at ${clock(s.nextAt)}` : 'nothing scheduled';
+  return `${taken} · ${next}`;
+}
+
+function MedicineCard({ m, status, reminderActive }: { m: MedicineReminder; status?: ReminderStatus; reminderActive: boolean }) {
+  const set = (patch: Partial<Omit<MedicineReminder, 'id' | 'type'>>) => window.aquamate.updateReminder(m.id, patch);
+  const setTime = (i: number, t: string) => set({ times: m.times.map((x, j) => (j === i ? t : x)) });
+  const toggleDay = (day: Weekday) => set({ days: m.days.includes(day) ? m.days.filter((d) => d !== day) : [...m.days, day] });
+  const remove = async () => {
+    if (!window.confirm(`Delete the “${m.name}” reminder?`)) return;
+    await window.aquamate.removeReminder(m.id);
+  };
+  const f = (name: string) => `med-${m.id}-${name}`;
+
+  return (
+    <div className="med" data-testid="medicine" data-id={m.id}>
+      <div className="med-head">
+        <span className="med-icon" aria-hidden>
+          💊
+        </span>
+        <TextField id={f('name')} label="Medicine name" value={m.name} maxLength={LIMITS.name} onSave={(name) => name && set({ name })} />
+        <Toggle label={`${m.name} reminders`} checked={m.enabled} onChange={(enabled) => set({ enabled })} />
+      </div>
+      <p className="hint med-status" data-testid="medicine-status">
+        {medicineStatus(m, status)}
+      </p>
+      <Row label="Dose" htmlFor={f('dose')}>
+        <TextField id={f('dose')} label="Dose" value={m.dose} placeholder="1 tablet" maxLength={LIMITS.dose} onSave={(dose) => set({ dose })} />
+      </Row>
+      <Row label="Times" hint={m.times.length > 1 ? 'Each time is a dose.' : undefined}>
+        <div className="med-times">
+          {m.times.map((t, i) => (
+            <span className="med-time" key={`${t}-${i}`}>
+              <input type="time" aria-label={`Dose time ${i + 1}`} className="time-input" value={t} onChange={(e) => e.target.value && setTime(i, e.target.value)} />
+              {m.times.length > 1 && (
+                <button type="button" className="icon-btn" aria-label={`Remove ${t}`} title="Remove" onClick={() => set({ times: m.times.filter((_, j) => j !== i) })}>
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+          {m.times.length < LIMITS.doseTimes && (
+            <button type="button" className="btn btn-ghost btn-small" onClick={() => set({ times: [...m.times, m.times.includes('20:00') ? '08:00' : '20:00'] })}>
+              + Time
+            </button>
+          )}
+        </div>
+      </Row>
+      <Row label="Days" hint={m.days.length === 0 ? <span className="warn">Pick at least one day.</span> : undefined}>
+        <div className="days" role="group" aria-label={`Days for ${m.name}`}>
+          {DAYS.map((d) => (
+            <button
+              key={d.value}
+              type="button"
+              className={`day${m.days.includes(d.value) ? ' is-on' : ''}`}
+              aria-pressed={m.days.includes(d.value)}
+              aria-label={d.long}
+              title={d.long}
+              onClick={() => toggleDay(d.value)}
+            >
+              {d.short}
+            </button>
+          ))}
+        </div>
+      </Row>
+      <Row label="Notes" htmlFor={f('notes')}>
+        <TextField id={f('notes')} label="Notes" value={m.notes} placeholder="With food" maxLength={LIMITS.notes} onSave={(notes) => set({ notes })} />
+      </Row>
+      <Row label="Remind again until taken" hint="If you don't answer, your companion comes back.">
+        <Toggle label="Remind again until taken" checked={m.repeatTimes > 0} onChange={(on) => set({ repeatTimes: on ? 3 : 0 })} />
+      </Row>
+      {m.repeatTimes > 0 && (
+        <Row label="How often">
+          <div className="med-repeat">
+            <Select id={f('every')} label="Remind again every" value={m.repeatEveryMinutes} options={REPEAT_EVERY} onChange={(repeatEveryMinutes) => set({ repeatEveryMinutes })} />
+            <Select id={f('times')} label="Remind again up to" value={m.repeatTimes} options={REPEAT_TIMES} onChange={(repeatTimes) => set({ repeatTimes })} />
+          </div>
+        </Row>
+      )}
+      <Row label="When I pick “Remind Me Later”" htmlFor={f('snooze')}>
+        <Select id={f('snooze')} label="Snooze" value={m.snoozeMinutes} options={SNOOZES} onChange={(snoozeMinutes) => set({ snoozeMinutes })} />
+      </Row>
+      <div className="med-actions">
+        <button type="button" className="btn btn-ghost btn-small" onClick={() => window.aquamate.testReminder(m.id)} disabled={reminderActive}>
+          Try it now
+        </button>
+        <button type="button" className="btn btn-danger btn-small" onClick={remove}>
+          Delete
+        </button>
       </div>
     </div>
   );

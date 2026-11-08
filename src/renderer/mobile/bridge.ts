@@ -18,11 +18,11 @@ import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import type { AquaMateApi, NotificationPermission, Unsubscribe } from '../../shared/api';
-import type { AppState, CharacterInfo, Reminder, ReminderContext, ReminderReason, ReminderResponse, Settings } from '../../shared/types';
-import { mergeSettings, sanitizeSettings, withReminderPatch } from '../../shared/settings';
-import { mergePlans, planChain, startOfDay, type PlannedReminder, type ScheduleTrigger } from '../../shared/schedule';
+import type { AppState, CharacterInfo, Reminder, ReminderContext, ReminderReason, ReminderResponse, ReminderTypeId, Settings } from '../../shared/types';
+import { mergeSettings, sanitizeSettings, withReminderAdded, withReminderPatch, withReminderRemoved } from '../../shared/settings';
+import { mergePlans, planChain, startOfDay, type NextInput, type PlannedReminder, type ScheduleTrigger } from '../../shared/schedule';
 import { dayOf, entryOf, sanitizeDaily, shownToday, withDone, withShown } from '../../shared/daily';
-import { REMINDER_TYPES, WATER_ID, nextTime, typeOf, waterReminder } from '../../shared/reminders';
+import { REMINDER_TYPES, WATER_ID, newReminderId, nextTime, typeOf, waterReminder } from '../../shared/reminders';
 import {
   BUILTIN_CHARACTER,
   BUILTIN_CHARACTERS,
@@ -37,8 +37,11 @@ import {
 } from '../../shared/characters';
 
 const REMINDER_IDS = { first: 1000, count: 8 }; // the next 8 reminders are scheduled at any time
-const CHANNEL_ID = 'reminders';
-const ACTION_TYPE = 'AQUAMATE_REMINDER';
+/** Each reminder type gets its own Android channel (so medicine can be set louder) and buttons. */
+const NOTIFY: Record<ReminderTypeId, { channel: string; channelName: string; description: string; actionType: string }> = {
+  water: { channel: 'reminders', channelName: 'Water reminders', description: 'Reminders to drink water', actionType: 'AQUAMATE_REMINDER' },
+  medicine: { channel: 'medicine', channelName: 'Medicine reminders', description: 'Reminders to take your medicine', actionType: 'AQUAMATE_MEDICINE' },
+};
 const CHAR_DIR = 'characters';
 
 /** A small event channel. `hold` keeps the last event until someone listens (cold start from a notification). */
@@ -214,24 +217,24 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
 
   async function setupAndroidNotifications(): Promise<void> {
     if (!native) return;
-    await LocalNotifications.createChannel({
-      id: CHANNEL_ID,
-      name: 'Water reminders',
-      description: 'Reminders to drink water',
-      importance: 4,
-      visibility: 1,
-      vibration: true,
-    }).catch(() => {});
+    for (const n of Object.values(NOTIFY)) {
+      await LocalNotifications.createChannel({
+        id: n.channel,
+        name: n.channelName,
+        description: n.description,
+        importance: 4,
+        visibility: 1,
+        vibration: true,
+      }).catch(() => {});
+    }
     await LocalNotifications.registerActionTypes({
-      types: [
-        {
-          id: ACTION_TYPE,
-          actions: [
-            { id: 'done', title: REMINDER_TYPES.water.labels.notifyDone },
-            { id: 'later', title: REMINDER_TYPES.water.labels.notifyLater },
-          ],
-        },
-      ],
+      types: (Object.keys(NOTIFY) as ReminderTypeId[]).map((type) => ({
+        id: NOTIFY[type].actionType,
+        actions: [
+          { id: 'done', title: REMINDER_TYPES[type].labels.notifyDone },
+          { id: 'later', title: REMINDER_TYPES[type].labels.notifyLater },
+        ],
+      })),
     }).catch(() => {});
   }
 
@@ -252,8 +255,8 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
             body,
             // Inexact but battery-friendly: Android may deliver a few minutes late.
             schedule: { at: new Date(p.at), allowWhileIdle: true },
-            channelId: CHANNEL_ID,
-            actionTypeId: ACTION_TYPE,
+            channelId: NOTIFY[r.type].channel,
+            actionTypeId: NOTIFY[r.type].actionType,
             smallIcon: 'ic_stat_aquamate',
             iconColor: '#2F80ED',
             autoCancel: true,
@@ -276,23 +279,27 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
   function planAll(now = Date.now()): Planned[] {
     const paused = schedule.pausedUntil !== null && schedule.pausedUntil > now;
     const plans = settings.reminders.map((r): Planned[] => {
-      const next = (input: { now: number; doneToday: number; after: ScheduleTrigger }) => nextTime(r, input);
+      const next = (input: NextInput) => nextTime(r, input);
       const tag = (p: PlannedReminder): Planned => ({ ...p, reminderId: r.id });
+      const { done, times } = entryOf(daily, r.id, now);
       if (paused) {
-        return planChain(next, { now, doneToday: doneToday(r.id, now), after: 'start', count: REMINDER_IDS.count, pausedUntil: schedule.pausedUntil }).map(tag);
+        return planChain(next, { now, doneToday: done, doneTimes: times, after: 'start', count: REMINDER_IDS.count, pausedUntil: schedule.pausedUntil }).map(tag);
       }
       const first = schedule.slots[r.id];
       if (!first || first.nextAt === null) return [];
       const at = first.nextAt;
+      const sameDay = startOfDay(at) === startOfDay(now);
+      // Then the ones after it, as if each passed unanswered (medicine plans its repeats).
       const rest = planChain(next, {
         now: at,
-        doneToday: startOfDay(at) > startOfDay(now) ? 0 : doneToday(r.id, now),
-        after: 'skip',
+        doneToday: sameDay ? done : 0,
+        doneTimes: sameDay ? times : [],
+        after: 'planned',
         count: REMINDER_IDS.count - 1,
       });
       return [{ at, snoozed: first.snoozed }, ...rest].map(tag);
     });
-    return mergePlans(plans, REMINDER_IDS.count);
+    return mergePlans(plans, REMINDER_IDS.count, settings.reminders.map((r) => typeOf(r).planReserve));
   }
 
   async function apply(): Promise<void> {
@@ -304,7 +311,8 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
   }
 
   function slotFor(r: Reminder, after: ScheduleTrigger, now = Date.now()): Slot {
-    return { nextAt: nextTime(r, { now, doneToday: doneToday(r.id, now), after }), snoozed: after === 'later' };
+    const { done, times } = entryOf(daily, r.id, now);
+    return { nextAt: nextTime(r, { now, doneToday: done, doneTimes: times, after }), snoozed: after === 'later' || after === 'missed' };
   }
 
   /** Recompute one reminder (or all of them) after something happened, then re-plan the notifications. */
@@ -341,7 +349,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     const character = allCharacters().find((c) => c.id === settings.characterId) ?? BUILTIN_CHARACTER;
     const ctx: ReminderContext = {
       reason,
-      reminder: { id: r.id, type: r.type, name: r.name },
+      reminder: { id: r.id, type: r.type, name: r.name, detail: typeOf(r).describe(r) ?? undefined },
       userName: settings.userName,
       progress: typeOf(r).progress(r, doneToday(r.id)),
       snoozeMinutes: r.snoozeMinutes,
@@ -401,6 +409,21 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       settings = withReminderPatch(settings, id, patch);
       await writePref('settings', settings);
       await reschedule('settings', id);
+      return settings;
+    },
+    async addReminder(type) {
+      const id = newReminderId(type);
+      const next = withReminderAdded(settings, type, id);
+      if (next === settings) throw new Error("Can't add another reminder of this kind.");
+      settings = next;
+      await writePref('settings', settings);
+      await reschedule('settings', id);
+      return { settings, id };
+    },
+    async removeReminder(id) {
+      settings = withReminderRemoved(settings, id);
+      await writePref('settings', settings);
+      await reschedule('settings');
       return settings;
     },
     testReminder: (id) => startReminder(reminderFor(id), 'manual'),
@@ -515,7 +538,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
         await writePref('today', daily);
         void vibrate();
       }
-      await reschedule(kind === 'done' ? 'done' : kind === 'skip' ? 'skip' : 'later', r.id);
+      await reschedule(kind === 'done' ? 'done' : kind === 'skip' ? 'skip' : kind === 'timeout' ? 'missed' : 'later', r.id);
       void LocalNotifications.removeAllDeliveredNotifications().catch(() => {});
       const progress = typeOf(r).progress(r, doneToday(r.id));
       const { exitPath, exitGait } = settings.general;

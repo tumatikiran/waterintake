@@ -106,12 +106,25 @@ export function reminderInterval(r: IntervalSchedule, doneToday: number, t: numb
 }
 
 /** What just happened, which decides how far away the next reminder is. */
-export type ScheduleTrigger = 'start' | 'settings' | 'done' | 'skip' | 'later' | 'resume';
+/**
+ * missed: shown but not answered. planned: planning further ahead, assuming
+ * the one before passed without an answer (Android schedules ahead).
+ */
+export type ScheduleTrigger = 'start' | 'settings' | 'done' | 'skip' | 'later' | 'missed' | 'planned' | 'resume';
 
 export interface NextReminderInput {
   reminder: IntervalSchedule;
   now: number;
   doneToday: number;
+  after: ScheduleTrigger;
+}
+
+/** What a type's scheduling rule gets: the time, today's log, and what just happened. */
+export interface NextInput {
+  now: number;
+  doneToday: number;
+  /** When it was done today (medicine: which doses were taken). */
+  doneTimes: number[];
   after: ScheduleTrigger;
 }
 
@@ -121,7 +134,7 @@ export interface PlannedReminder {
 }
 
 /** One reminder's next time, given what just happened (see shared/reminders.ts for each type's rule). */
-export type NextTime = (input: { now: number; doneToday: number; after: ScheduleTrigger }) => number | null;
+export type NextTime = (input: NextInput) => number | null;
 
 /**
  * The next `count` reminders, assuming no glass is logged in between. Used on
@@ -131,13 +144,13 @@ export type NextTime = (input: { now: number; doneToday: number; after: Schedule
  */
 export function planReminders(input: NextReminderInput & { count: number; pausedUntil?: number | null }): PlannedReminder[] {
   const next: NextTime = ({ now, doneToday, after }) => nextReminderTime({ reminder: input.reminder, now, doneToday, after });
-  return planChain(next, input);
+  return planChain(next, { ...input, doneTimes: [] });
 }
 
 /** A reminder's next `count` times from `now` (after `after`), assuming nothing is done in between. */
 export function planChain(
   next: NextTime,
-  input: { now: number; doneToday: number; after: ScheduleTrigger; count: number; pausedUntil?: number | null },
+  input: { now: number; doneToday: number; doneTimes: number[]; after: ScheduleTrigger; count: number; pausedUntil?: number | null },
 ): PlannedReminder[] {
   const paused = input.pausedUntil != null && input.pausedUntil > input.now;
   let now = paused ? input.pausedUntil! : input.now;
@@ -145,29 +158,40 @@ export function planChain(
   const today = startOfDay(input.now);
   const out: PlannedReminder[] = [];
   for (let i = 0; i < input.count; i++) {
-    const doneToday = startOfDay(now) > today ? 0 : input.doneToday;
-    const at = next({ now, doneToday, after });
+    const newDay = startOfDay(now) > today;
+    const at = next({ now, doneToday: newDay ? 0 : input.doneToday, doneTimes: newDay ? [] : input.doneTimes, after });
     if (at === null) break;
-    out.push({ at, snoozed: after === 'later' });
+    out.push({ at, snoozed: after === 'later' || after === 'missed' });
     now = at;
-    after = 'skip';
+    after = 'planned';
   }
   return out;
 }
 
-/** The first of several reminders' plans, merged in time order (Android schedules them as notifications). */
-export function mergePlans<T extends PlannedReminder>(plans: T[][], count: number): T[] {
-  return plans
+/**
+ * Several reminders' plans merged into at most `count` notifications (Android
+ * schedules a fixed number ahead). Each plan keeps its first `reserve[i]`
+ * items, so a frequent reminder (water) can't crowd out a rarer one
+ * (tomorrow's medicine); the rest of the room goes to the soonest.
+ */
+export function mergePlans<T extends PlannedReminder>(plans: T[][], count: number, reserve: number[] = []): T[] {
+  const kept = new Set<T>();
+  plans.forEach((plan, i) => plan.slice(0, reserve[i] ?? 0).forEach((p) => kept.add(p)));
+  const reserved = [...kept].sort((a, b) => a.at - b.at).slice(0, count);
+  const rest = plans
     .flat()
+    .filter((p) => !kept.has(p))
     .sort((a, b) => a.at - b.at)
-    .slice(0, count);
+    .slice(0, count - reserved.length);
+  return [...reserved, ...rest].sort((a, b) => a.at - b.at);
 }
 
 /** When the next water (interval) reminder should fire, or null when it's off or nothing is scheduled. */
 export function nextReminderTime({ reminder, now, doneToday, after }: NextReminderInput): number | null {
   if (!reminder.enabled) return null;
   let candidate: number;
-  if (after === 'later') {
+  // Not answered: come back after the snooze, as if "later" was picked.
+  if (after === 'later' || after === 'missed') {
     candidate = now + reminder.snoozeMinutes * MINUTE;
   } else if (after === 'resume') {
     candidate = now + MINUTE; // welcome back: nudge soon after a pause ends
@@ -177,4 +201,64 @@ export function nextReminderTime({ reminder, now, doneToday, after }: NextRemind
     candidate = interval === 'goal-reached' ? addDays(startOfDay(now), 1) : now + interval * MINUTE;
   }
   return alignToSchedule(reminder.schedule, candidate);
+}
+
+// ------------------------------------------------------------------ medicine
+/** A dose counts as taken if it was done up to this long before its time (or any time after, until the next dose). */
+export const TAKEN_EARLY = 60 * MINUTE;
+
+/** The dose times on the day starting at `dayStart`, earliest first (none on days it isn't taken). */
+export function doseTimes(r: { times: string[]; days: number[] }, dayStart: number): number[] {
+  if (!r.days.includes(new Date(dayStart).getDay())) return [];
+  return r.times
+    .map(parseTime)
+    .filter((m): m is number => m !== null)
+    .map((m) => at(dayStart, m))
+    .sort((a, b) => a - b);
+}
+
+function taken(dose: number, nextDose: number | null, doneTimes: number[]): boolean {
+  return doneTimes.some((t) => t >= dose - TAKEN_EARLY && (nextDose === null || t < nextDose - TAKEN_EARLY));
+}
+
+export interface DoseSchedule {
+  enabled: boolean;
+  times: string[];
+  days: number[];
+  snoozeMinutes: number;
+  repeatEveryMinutes: number;
+  repeatTimes: number;
+}
+
+/**
+ * The next medicine reminder: the next dose not yet taken, or, while the
+ * latest dose is due and untaken, a repeat ("remind again until taken"):
+ * every repeatEveryMinutes, repeatTimes times. ✕ (skip) gives up on that
+ * dose; "later" snoozes; opening the app with a dose overdue nudges soon.
+ */
+export function nextDoseTime(r: DoseSchedule, { now, doneTimes, after }: NextInput): number | null {
+  if (!r.enabled || !r.times.length || !r.days.length) return null;
+  if (after === 'later') return now + r.snoozeMinutes * MINUTE;
+  const today = startOfDay(now);
+  const candidates: number[] = [];
+  const todays = doseTimes(r, today);
+  const due = todays.filter((t) => t <= now).length - 1;
+  if (due >= 0 && r.repeatTimes > 0 && after !== 'skip' && after !== 'done') {
+    const dose = todays[due];
+    if (!taken(dose, todays[due + 1] ?? null, doneTimes)) {
+      const windowEnd = dose + r.repeatEveryMinutes * r.repeatTimes * MINUTE;
+      if ((after === 'start' || after === 'resume') && now < windowEnd) candidates.push(now + MINUTE);
+      for (let k = 1; k <= r.repeatTimes; k++) {
+        const t = dose + k * r.repeatEveryMinutes * MINUTE;
+        if (t > now) candidates.push(t);
+      }
+    }
+  }
+  for (let d = 0; d < 8; d++) {
+    const times = doseTimes(r, addDays(today, d));
+    times.forEach((t, i) => {
+      if (t > now && !(d === 0 && taken(t, times[i + 1] ?? null, doneTimes))) candidates.push(t);
+    });
+  }
+  return candidates.length ? Math.min(...candidates) : null;
 }

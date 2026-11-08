@@ -14,8 +14,8 @@ import type {
   SaveCreatedInput,
   Settings,
 } from '../shared/types';
-import { mergeSettings, sanitizeSettings, withReminderPatch, type SettingsPatch } from '../shared/settings';
-import { WATER_ID, typeOf, waterReminder } from '../shared/reminders';
+import { mergeSettings, sanitizeSettings, withReminderAdded, withReminderPatch, withReminderRemoved, type SettingsPatch } from '../shared/settings';
+import { REMINDER_TYPES, WATER_ID, newReminderId, typeOf, waterReminder } from '../shared/reminders';
 import { startOfDay } from '../shared/schedule';
 import { WindowManager, type View } from './window-manager';
 import { DailyLog, JsonFile } from './stores';
@@ -106,7 +106,7 @@ function main(): void {
 
   const scheduler = new ReminderScheduler({
     reminders: () => settings.reminders,
-    doneToday: (id) => log.doneToday(id),
+    today: (id) => log.entry(id),
     pauseWhenAway: () => settings.general.pauseWhenAway,
     isUserAway: () => {
       const state = powerMonitor.getSystemIdleState(IDLE_THRESHOLD_S);
@@ -168,7 +168,7 @@ function main(): void {
     const character = characters.get(settings.characterId) ?? BUILTIN_CHARACTER;
     return {
       reason,
-      reminder: { id: r.id, type: r.type, name: r.name },
+      reminder: { id: r.id, type: r.type, name: r.name, detail: typeOf(r).describe(r) ?? undefined },
       userName: settings.userName,
       progress: typeOf(r).progress(r, log.doneToday(r.id)),
       snoozeMinutes: r.snoozeMinutes,
@@ -240,6 +240,21 @@ function main(): void {
     if (!fromSettings(e) || typeof id !== 'string' || typeof patch !== 'object' || patch === null) throw new Error('Not allowed');
     saveSettings(withReminderPatch(settings, id, patch as Record<string, unknown>));
     scheduler.reschedule(id, 'settings');
+    return settings;
+  });
+  ipcMain.handle('reminders:add', (e, type: unknown) => {
+    if (!fromSettings(e) || typeof type !== 'string' || !(type in REMINDER_TYPES)) throw new Error('Not allowed');
+    const id = newReminderId(type as Reminder['type']);
+    const next = withReminderAdded(settings, type as Reminder['type'], id);
+    if (next === settings) throw new Error("Can't add another reminder of this kind.");
+    saveSettings(next);
+    scheduler.sync('settings');
+    return { settings, id };
+  });
+  ipcMain.handle('reminders:remove', (e, id: unknown) => {
+    if (!fromSettings(e) || typeof id !== 'string') throw new Error('Not allowed');
+    saveSettings(withReminderRemoved(settings, id));
+    scheduler.sync('settings');
     return settings;
   });
   ipcMain.on('reminder:test', (e, id: unknown) => {
@@ -317,7 +332,7 @@ function main(): void {
     // The reminder on screen, as currently configured.
     const r = settings.reminders.find((x) => x.id === activeReminder?.id) ?? activeReminder ?? water();
     const done = kind === 'done' ? log.done(r.id) : log.doneToday(r.id);
-    scheduler.reschedule(r.id, kind === 'done' ? 'done' : kind === 'skip' ? 'skip' : 'later');
+    scheduler.reschedule(r.id, kind === 'done' ? 'done' : kind === 'skip' ? 'skip' : kind === 'timeout' ? 'missed' : 'later');
     const progress = typeOf(r).progress(r, done);
     const { exitPath, exitGait } = settings.general;
     return { progress, goalReached: !!progress && progress.done >= progress.goal, snoozeMinutes: r.snoozeMinutes, exitPath, exitGait };

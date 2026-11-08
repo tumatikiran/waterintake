@@ -175,6 +175,20 @@ html[data-view='settings'] .muted { color: var(--muted); }
 .schedule-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .schedule-foot .hint { margin: 0; }
 
+/* Medicine reminders */
+.med-list { display: flex; flex-direction: column; gap: 12px; }
+.med { padding: 12px 14px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.med-head { display: flex; align-items: center; gap: 10px; }
+.med-head .text-input { flex: 1; min-width: 0; font-weight: 650; }
+.med-icon { font-size: 20px; }
+.med-status { margin: 6px 0 4px; }
+.med .row { padding: 8px 0; }
+.med-times { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.med-time { display: inline-flex; align-items: center; }
+.med-repeat { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.med-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.empty-note { margin: 0; }
+
 /* Notices */
 .notice { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.4; }
 .notice-success { background: var(--success-soft); color: var(--success-ink); }
@@ -254,3 +268,4 @@ html[data-view='settings'] .muted { color: var(--muted); }
 @media (max-width: 900px) {
   .app-header .today-text .muted { display: none; }
 }
+.hint .warn { color: var(--warn); }

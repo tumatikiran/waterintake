@@ -4,8 +4,8 @@ import { AnimationController } from '../AnimationController';
 import { ExpressionController } from './ExpressionController';
 import type { WaterBottle } from './WaterBottle';
 import { SIP_AMOUNT } from './bottleSpec';
-import { HandProps } from './props';
-import { ARM_R_BONES, HAND_POSE_CLIPS, RIG_HEIGHT, proceduralClips, type AquaMateMeta } from './procedural';
+import { HandProps, tablet as makeTablet } from './props';
+import { ARM_R_BONES, HAND_POSE_CLIPS, RIG_HEIGHT, TABLET, proceduralClips, type AquaMateMeta } from './procedural';
 
 /** Every character is scaled to this height (world units). */
 export const TARGET_HEIGHT = 1.85;
@@ -128,6 +128,14 @@ export function createRig(asset: CharacterAssetData): CharacterRig {
     socket.add(grip);
   }
   const props = new HandProps(grip, (holding, instant) => animations.setHolding(holding, instant));
+  // The tablet appears in the left palm while TakeTablet tips it out and brings it to the mouth.
+  const leftHand = procedural ? findBone(model, 'Hand_L') : undefined;
+  const tablet = leftHand ? makeTablet() : null;
+  if (leftHand && tablet) {
+    tablet.object.position.set(-0.012, -0.075, 0.045);
+    tablet.object.visible = false;
+    leftHand.add(tablet.object);
+  }
   const bottle = () => (props.prop?.id === 'waterBottle' ? props.prop.bottle : null);
 
   const drinkWindow = meta?.drink ?? { start: 0.2, end: 0.7 };
@@ -155,6 +163,10 @@ export function createRig(asset: CharacterAssetData): CharacterRig {
       animations.update(dt);
       expressions.update(dt);
       props.update(dt);
+      if (tablet) {
+        const t = animations.progress() * TABLET.duration;
+        tablet.object.visible = animations.playing === 'TakeTablet' && t >= TABLET.shown[0] && t <= TABLET.shown[1];
+      }
       const b = bottle();
       if (!b) return void (drinkFrom = null);
       // The water goes down while the Drink clip tips the bottle up.
@@ -173,6 +185,7 @@ export function createRig(asset: CharacterAssetData): CharacterRig {
     dispose() {
       animations.dispose();
       props.dispose();
+      tablet?.dispose();
       root.removeFromParent();
     },
   };

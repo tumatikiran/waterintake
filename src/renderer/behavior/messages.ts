@@ -17,13 +17,18 @@ interface Wording {
   /** "Time to …" (the ask, without the greeting). */
   ask: (r: ReminderContext) => string;
   cheers: string;
-  done: (goalReached: boolean) => string;
+  done: (r: ReminderContext, goalReached: boolean) => string;
 }
 const WORDING: Record<ReminderTypeId, Wording> = {
   water: {
     ask: () => 'Time to drink some water 💧',
     cheers: 'Cheers! 💧',
-    done: (goalReached) => (goalReached ? 'Daily goal reached! Amazing 🎉' : 'Great job! Stay hydrated.'),
+    done: (_r, goalReached) => (goalReached ? 'Daily goal reached! Amazing 🎉' : 'Great job! Stay hydrated.'),
+  },
+  medicine: {
+    ask: (r) => `Time for your ${r.reminder.name}${r.reminder.detail ? ` (${r.reminder.detail})` : ''} 💊`,
+    cheers: 'Down it goes! 💊',
+    done: (r) => `Well done! ${r.reminder.name} taken ✅`,
   },
 };
 
@@ -43,7 +48,7 @@ export function renderMessage(key: MessageKey, { reminder: r, result }: MessageC
     case 'hello':
       return { text: `Hi${name ? ` ${name}` : ''}! Let's stay hydrated 💧`, progress };
     case 'greatJob':
-      return { text: words.done(!!result?.goalReached && !!p && p.done === p.goal), progress };
+      return { text: words.done(r, !!result?.goalReached && !!p && p.done === p.goal), progress };
     case 'relax':
       return { text: `Time to unwind${name ? `, ${name}` : ''}. Breathe in… and out 🌿` };
     case 'refreshed':

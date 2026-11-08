@@ -6,15 +6,15 @@
  * below, and give it card wording (renderer/behavior/messages.ts) and, if
  * the companion carries something, a prop (renderer/character/props.ts).
  */
-import type { Progress, Reminder, ReminderTypeId, TimeWindow, WaterReminder } from './types';
-import { nextReminderTime, type NextTime, type ScheduleTrigger } from './schedule';
+import type { MedicineReminder, Progress, Reminder, ReminderTypeId, TimeWindow, WaterReminder, Weekday } from './types';
+import { nextDoseTime, nextReminderTime, parseTime, type NextInput } from './schedule';
 import { ALL_DAYS, bool, int, isObj, sanitizeWindow, text } from './sanitize';
 
-/** Things the companion can carry in to show what a reminder is for. */
-export type PropName = 'waterBottle';
+/** Things the companion can carry in to show what a reminder is for (and 'tablet', which only appears while taking it). */
+export type PropName = 'waterBottle' | 'pillBottle';
 
 /** Scripts that play an answer (renderer/behavior/interactions.ts). */
-export type AnswerScript = 'drank' | 'later' | 'skip' | 'timeout';
+export type AnswerScript = 'drank' | 'tookMedicine' | 'later' | 'skip' | 'timeout';
 
 export interface ReminderTypeDef<R extends Reminder = Reminder> {
   id: ReminderTypeId;
@@ -26,7 +26,9 @@ export interface ReminderTypeDef<R extends Reminder = Reminder> {
   /** Turns stored or edited data into a valid reminder of this type. */
   sanitize(raw: Record<string, unknown>, id: string): R;
   /** When it fires next after `after` (null: not scheduled). */
-  next(r: R, input: Parameters<NextTime>[0]): number | null;
+  next(r: R, input: NextInput): number | null;
+  /** A short line for the card, like "1 tablet · with food" (null: nothing to add). */
+  describe(r: R): string | null;
   /** Today's progress towards a goal, if it has one. */
   progress(r: R, doneToday: number): Progress | null;
   /** What the companion carries in. */
@@ -37,6 +39,8 @@ export interface ReminderTypeDef<R extends Reminder = Reminder> {
   duringRelax: 'wait' | 'wake';
   /** Which goes first when several are due (higher first). */
   priority: number;
+  /** Android: how many upcoming notifications it always keeps, however many others there are. */
+  planReserve: number;
   /** Button and notification wording. */
   labels: { done: string; later: string; notifyDone: string; notifyLater: string };
   notification(r: R, ctx: { userName: string; snoozed: boolean }): { title: string; body: string };
@@ -49,6 +53,11 @@ export const LIMITS = {
   scheduleWindows: 6,
   name: 40,
   reminders: 20,
+  dose: 40,
+  notes: 80,
+  doseTimes: 6,
+  repeatEveryMinutes: [5, 60],
+  repeatTimes: [0, 6],
 } as const;
 
 const DEFAULT_WINDOW: TimeWindow = { days: [...ALL_DAYS], start: '09:00', end: '21:00' };
@@ -90,11 +99,13 @@ const water: ReminderTypeDef<WaterReminder> = {
     };
   },
   next: (r, input) => nextReminderTime({ reminder: r, ...input }),
+  describe: () => null,
   progress: (r, doneToday) => ({ done: doneToday, goal: r.dailyGoal }),
   prop: 'waterBottle',
   doneScript: 'drank',
   duringRelax: 'wait',
   priority: 1,
+  planReserve: 2,
   labels: { done: 'I Drank Water', later: 'Drink Later', notifyDone: 'I drank water', notifyLater: 'Drink later' },
   notification: (_r, { userName, snoozed }) => {
     const name = userName ? ` ${userName}` : '';
@@ -105,7 +116,62 @@ const water: ReminderTypeDef<WaterReminder> = {
   },
 };
 
-export const REMINDER_TYPES: { [K in ReminderTypeId]: ReminderTypeDef<Extract<Reminder, { type: K }>> } = { water };
+const medicine: ReminderTypeDef<MedicineReminder> = {
+  id: 'medicine',
+  label: 'Medicine',
+  icon: '💊',
+  singleton: false,
+  create: (id) => ({
+    id,
+    type: 'medicine',
+    name: 'Medicine',
+    enabled: true,
+    dose: '1 tablet',
+    notes: '',
+    times: ['12:00'],
+    days: [...ALL_DAYS],
+    snoozeMinutes: 10,
+    repeatEveryMinutes: 10,
+    repeatTimes: 3, // remind again until taken: on by default
+  }),
+  sanitize(r, id) {
+    const d = medicine.create(id);
+    const times = Array.isArray(r.times)
+      ? [...new Set(r.times.filter((t): t is string => typeof t === 'string' && parseTime(t) !== null))].sort().slice(0, LIMITS.doseTimes)
+      : [];
+    const days = Array.isArray(r.days)
+      ? [...new Set(r.days.filter((x): x is Weekday => Number.isInteger(x) && x >= 0 && x <= 6))].sort()
+      : d.days;
+    return {
+      id,
+      type: 'medicine',
+      name: text(r.name, LIMITS.name, d.name),
+      enabled: bool(r.enabled, d.enabled),
+      dose: typeof r.dose === 'string' ? r.dose.trim().slice(0, LIMITS.dose) : d.dose,
+      notes: typeof r.notes === 'string' ? r.notes.trim().slice(0, LIMITS.notes) : d.notes,
+      times: times.length ? times : d.times,
+      days,
+      snoozeMinutes: int(r.snoozeMinutes, LIMITS.snoozeMinutes, d.snoozeMinutes),
+      repeatEveryMinutes: int(r.repeatEveryMinutes, LIMITS.repeatEveryMinutes, d.repeatEveryMinutes),
+      repeatTimes: int(r.repeatTimes, LIMITS.repeatTimes, d.repeatTimes),
+    };
+  },
+  next: (r, input) => nextDoseTime(r, input),
+  describe: (r) => [r.dose, r.notes].filter(Boolean).join(' · ') || null,
+  progress: () => null,
+  prop: 'pillBottle',
+  doneScript: 'tookMedicine',
+  duringRelax: 'wake', // medicine can't wait: it wakes a relaxing companion
+  priority: 10, // and goes first when water is due too
+  planReserve: 4, // the next dose and its repeats
+  labels: { done: 'I Took It', later: 'Remind Me Later', notifyDone: 'I took it', notifyLater: 'Later' },
+  notification: (r, { snoozed }) => {
+    const what = `${r.name}${r.dose ? ` (${r.dose})` : ''}`;
+    return { title: 'AquaMate 💊', body: snoozed ? `Reminder: time for your ${what} 💊` : `Time for your ${what} 💊` };
+  },
+};
+
+export const REMINDER_TYPES: { [K in ReminderTypeId]: ReminderTypeDef<Extract<Reminder, { type: K }>> } = { water, medicine };
 
 /** The id of the built-in water reminder (it always exists). */
 export const WATER_ID = 'water';
@@ -115,8 +181,13 @@ export function typeOf(r: Reminder): ReminderTypeDef {
 }
 
 /** When a reminder fires next (null: off or nothing scheduled). */
-export function nextTime(r: Reminder, input: { now: number; doneToday: number; after: ScheduleTrigger }): number | null {
+export function nextTime(r: Reminder, input: NextInput): number | null {
   return typeOf(r).next(r, input);
+}
+
+/** A new reminder's id. */
+export function newReminderId(type: ReminderTypeId): string {
+  return `${type.slice(0, 3)}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
 export function sanitizeReminder(v: unknown, fallbackId: string): Reminder | null {

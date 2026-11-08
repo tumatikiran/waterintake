@@ -36,6 +36,7 @@ export type Step =
 export type InteractionName =
   | 'arrive'
   | 'drank'
+  | 'tookMedicine'
   | 'later'
   | 'skip'
   | 'timeout'
@@ -128,6 +129,24 @@ export const INTERACTIONS: Record<InteractionName, Step[]> = {
     { do: 'say', message: 'cheers' },
     { do: 'face', to: 'drink' },
     { do: 'expression', name: 'drinking' },
+    { do: 'play', animation: 'Drink' },
+    { do: 'face', to: 'user' },
+    { do: 'expression', name: 'joyful' },
+    { do: 'say', message: 'greatJob' },
+    { do: 'loop', animation: 'Happy' },
+    { do: 'wait', seconds: 2.4 },
+    { do: 'say', message: null },
+    { do: 'expression', name: 'happy' },
+    { do: 'walk', to: 'exit' },
+  ],
+  // Medicine taken: a tablet from the pill bottle, then a sip of water to wash it down, celebrate, leave.
+  tookMedicine: [
+    { do: 'say', message: 'cheers' },
+    { do: 'face', to: 'drink' },
+    { do: 'play', animation: 'TakeTablet' },
+    { do: 'expression', name: 'drinking' },
+    { do: 'prop', id: 'waterBottle' }, // swap the pill bottle for water
+    { do: 'wait', seconds: 0.35 },
     { do: 'play', animation: 'Drink' },
     { do: 'face', to: 'user' },
     { do: 'expression', name: 'joyful' },

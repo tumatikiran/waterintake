@@ -33,7 +33,16 @@ shows through.</sub>
 - His hands are free by default: what he carries shows what a reminder is
   for. A water reminder walks in carrying a water bottle. **I Drank Water**
   makes him lift it to his mouth and drink, eyes closed, as the water level
-  drops. Then he cheers. (Medicine and other reminder types are planned.)
+  drops. Then he cheers.
+- **Medicine reminders** 💊: add as many as you need in **Settings →
+  Reminders → Medicine**, each with a name, dose, notes, one or more times
+  and the days you take it. Your companion walks in carrying an amber pill
+  bottle; **I Took It** makes them tip a tablet into their hand, take it,
+  wash it down with a sip of water and cheer. If you don't answer they come
+  back (**Remind again until taken**: every 10 minutes, up to 3 times, by
+  default). Medicine wakes your companion from Relax mode, and goes first if
+  water is due at the same time. A dose counts as taken if you answer up to
+  an hour early.
 - **Drink Later** makes him sigh, shake his head and walk slowly away with a
   sad face.
 - You choose how he leaves, whether you drank or not: **across the whole
@@ -55,6 +64,9 @@ shows through.</sub>
   still gets them up to remind you.
 
 **Smart reminders**
+
+AquaMate is not a medical device: please don't rely on it alone for
+medicine you can't miss.
 
 - **Fixed interval** (every 15 minutes to 3 hours), or **Spread my goal**: the
   time left today is divided by the glasses you still need, so you get more
@@ -98,8 +110,10 @@ shows through.</sub>
 The Android app has the same companion, animations, expressions, character
 creator and reminder rules:
 
-- Reminders arrive as **notifications with "I drank water" and "Drink later"
-  buttons**, even when the app is closed. Tapping one opens the animated scene.
+- Reminders arrive as **notifications with "I drank water" / "Drink later"
+  (or "I took it" / "Later" for medicine) buttons**, even when the app is
+  closed. Tapping one opens the animated scene. Medicine has its own
+  notification channel, so you can make it louder in Android's settings.
 - The character lives on a **Today** screen, where he drinks along when you log
   a glass. **Relax** sits him down right there; tap him (or **Wake up**) to
   get him up. Logging a glass while he relaxes gets him up to drink along.
@@ -276,6 +290,9 @@ This builds both apps, then runs three kinds of tests:
   - cleaning up settings from older or hand-edited files
   - the reminder list: upgrading older settings, the built-in water
     reminder, per-reminder updates, and the per-reminder daily log
+  - medicine scheduling: doses on chosen days, taken (or taken early), remind
+    again until taken, skip, snooze, the nudge when opening the app late, and
+    Android's notification plan keeping room for medicine
   - the multi-reminder scheduler: one next time per reminder, reminders due
     together shown one at a time, and a waiting reminder not holding up others
   - the companion's state machine (`src/shared/companion.ts`): every move
@@ -304,6 +321,11 @@ This builds both apps, then runs three kinds of tests:
     deleted) and is the one on stage throughout every interaction: walking
     in, waiting, drinking, Drink Later, × and leaving. The Android suite
     checks the same on the Today screen and in the reminder scene.
+  - **Medicine:** add a medicine reminder (name, dose, time) and it's saved
+    with "remind again until taken" on; it walks in with the pill bottle and
+    its own wording and buttons; **I Took It** plays taking the tablet and a
+    sip of water and logs the dose (not a glass); deleting it works. The
+    Android suite checks the medicine notification and its button.
   - **Dozing:** Relax mode dozes off (asleep face, "zzz"), a reminder wakes
     the sleeping companion with a stretch and a yawn, turning Relax mode off
     while asleep does the same before leaving, and **Relax for** ends it by

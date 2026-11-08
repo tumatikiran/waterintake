@@ -14,6 +14,7 @@ export type AnimationRole =
   | 'Sad'
   | 'SadWalk'
   | 'Run'
+  | 'TakeTablet'
   | 'SitDown'
   | 'Relax'
   | 'StandUp'
@@ -44,6 +45,13 @@ export const ANIMATION_ROLES: Record<AnimationRole, RoleSpec> = {
   SadWalk: { aliases: ['sadwalk', 'walksad', 'sadwalking', 'tiredwalk', 'slowwalk'], fallback: ['Walk'], loop: true },
   // Without a run clip he plays the walk faster (see Mascot.tsx).
   Run: { aliases: ['run', 'running', 'runcycle', 'jog', 'jogging', 'sprint'], fallback: ['Walk'], loop: true },
+  // Medicine: tip a tablet into the left hand and bring it to the mouth.
+  TakeTablet: {
+    aliases: ['taketablet', 'takepill', 'takemedicine', 'takingpill', 'takingmedicine', 'pill', 'medicine'],
+    fallback: ['Drink', 'Happy', 'Idle'],
+    loop: false,
+    seconds: 3,
+  },
   // Relax mode: sit down, breathe calmly while seated, stand back up. Models
   // without them relax standing (Idle) with their eyes closed.
   SitDown: { aliases: ['sitdown', 'standtosit', 'sittingdown'], fallback: ['Idle'], loop: false, seconds: 1.2 },
@@ -65,7 +73,7 @@ export const ROLE_ORDER = Object.keys(ANIMATION_ROLES) as AnimationRole[];
  * drinking brings the bottle to the mouth, cheering throws both arms up.
  * Every other role uses the hand pose (carrying) while holding something.
  */
-export const ARMS_OWN: readonly AnimationRole[] = ['Drink', 'Happy'];
+export const ARMS_OWN: readonly AnimationRole[] = ['Drink', 'Happy', 'TakeTablet'];
 
 // --------------------------------------------------------------- expressions
 /** A face "muscle" driven by morph targets. */

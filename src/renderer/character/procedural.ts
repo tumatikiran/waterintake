@@ -4,7 +4,7 @@
  * buildCharacter(recipe) returns a real rigged model: one skinned mesh per
  * material on an 18-bone skeleton, a face mesh with happy/sad/blink/open morph
  * targets, and baked animation clips (Idle, Walk, Wave, Drink, Happy, Sad,
- * SadWalk, Run, and SitDown, Relax, StandUp, Doze and Stretch for Relax mode). The same code produces the bundled default GLB
+ * SadWalk, Run, TakeTablet, and SitDown, Relax, StandUp, Doze and Stretch for Relax mode). The same code produces the bundled default GLB
  * (scripts/generate-placeholder-model.mjs) and characters made in the
  * creator, which are exported to GLB and stored like any uploaded model.
  *
@@ -101,6 +101,12 @@ export const LOCOMOTION = {
   SadWalk: (4 * LEG * Math.sin(SAD_WALK.amplitude)) / SAD_WALK.cycle,
   Run: (4 * LEG * Math.sin(RUN.amplitude)) / RUN.cycle,
 };
+/**
+ * TakeTablet clip timing (seconds): tip a tablet into the left hand, bring it
+ * to the mouth, swallow, back to carrying. `shown`: when the tablet is in the
+ * left hand.
+ */
+export const TABLET = { duration: 3.4, pour: 0.8, pourHold: 1.05, toMouth: 1.9, swallow: 2.6, shown: [0.7, 2.05] as const };
 /** Drink clip timing (seconds): lift, drink (the bottle empties), lower, "ahh". */
 export const DRINK = { duration: 4.4, liftEnd: 0.8, drinkEnd: 3.1, lowerEnd: 3.9 };
 /**
@@ -498,7 +504,7 @@ class Baker {
   }
 
   /** Keeps the bottle (and so the right hand) upright, turning only with the body. */
-  private holdBottleUpright() {
+  holdBottleUpright() {
     const hand = this.bones.Hand_R;
     const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(this.bones.Hips.getWorldQuaternion(new THREE.Quaternion()));
     const desired = new THREE.Quaternion()
@@ -616,8 +622,37 @@ class Baker {
     this.root.updateMatrixWorld(true);
   }
 
+  /**
+   * Taking a tablet, as key poses: tipping the pill bottle over the open left
+   * hand, the left hand at the mouth, a swallow with the head back. The right
+   * hand holds the bottle throughout.
+   */
+  tabletPoses(): { pour: Snapshot; toMouth: Snapshot; swallow: Snapshot } {
+    const base = idleFrame(0).rot!;
+    const key = (frame: Frame, then: () => void) => {
+      this.pose(frame);
+      then();
+      return this.snapshot();
+    };
+    const pour = key({ rot: { ...base, Chest: [0.08, 0, 0], Neck: [0.06, 0, 0], Head: [0.22, 0, 0] }, holding: true }, () => {
+      this.reach('R', new THREE.Vector3(-0.03, 1.31, 0.27), new THREE.Vector3(-0.6, -0.7, 0.1));
+      this.holdBottleUpright();
+      // Tip the bottle's top towards the left hand.
+      const hand = this.bones.Hand_R;
+      const world = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -1.15).multiply(hand.getWorldQuaternion(new THREE.Quaternion()));
+      hand.quaternion.copy(hand.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(world));
+      this.reach('L', new THREE.Vector3(0.07, 1.12, 0.28), new THREE.Vector3(0.6, -0.7, 0.1));
+    });
+    const toMouth = key({ rot: { ...base, ...HOLD_R, Head: [-0.12, 0, 0] }, holding: true }, () => {
+      const mouth = this.bones.Head.localToWorld(MOUTH_IN_HEAD.clone());
+      this.reach('L', mouth.add(new THREE.Vector3(0.025, -0.075, 0.035)), new THREE.Vector3(0.7, -0.6, 0.2));
+    });
+    const swallow = key({ rot: { ...base, ...HOLD_R, Neck: [-0.06, 0, 0], Head: [-0.16, 0, 0], UpperArm_L: [-0.1, 0, ARM_OUT], LowerArm_L: [-0.5, 0, 0] }, holding: true }, () => {});
+    return { pour, toMouth, swallow };
+  }
+
   /** Two-bone IK: puts an arm's wrist at a world point, the elbow bending towards `pole`. */
-  private reach(side: 'L' | 'R', wrist: THREE.Vector3, pole: THREE.Vector3) {
+  reach(side: 'L' | 'R', wrist: THREE.Vector3, pole: THREE.Vector3) {
     const upper = this.bones[`UpperArm_${side}`];
     const shoulder = upper.getWorldPosition(new THREE.Vector3());
     const toWrist = wrist.clone().sub(shoulder);
@@ -936,6 +971,20 @@ function bakeClips(b: Baker): THREE.AnimationClip[] {
     };
   });
 
+  // Taking a tablet (the right hand keeps holding the pill bottle).
+  const carrying = (() => {
+    b.pose({ rot: { ...idleFrame(0).rot, ...HOLD_R }, holding: true });
+    return b.snapshot();
+  })();
+  const T = TABLET;
+  const tablet = b.tabletPoses();
+  const takeTablet = b.bakeWith('TakeTablet', T.duration, (t) => {
+    if (t < T.pourHold) return b.blend(carrying, tablet.pour, range(t, 0, T.pour));
+    if (t < T.toMouth + 0.15) return b.blend(tablet.pour, tablet.toMouth, range(t, T.pourHold, T.toMouth));
+    if (t < T.swallow) return b.blend(tablet.toMouth, tablet.swallow, range(t, T.toMouth + 0.15, T.swallow));
+    b.blend(tablet.swallow, carrying, range(t, T.swallow, T.duration));
+  });
+
   // Hand pose: carrying something upright in front of the hip, with a little give.
   const carry = b.bake(HAND_POSE_CLIPS.carry, 3, (_t, w) => ({
     rot: { UpperArm_R: [HOLD_R.UpperArm_R[0] + 0.02 * Math.sin(w), 0, HOLD_R.UpperArm_R[2]], LowerArm_R: HOLD_R.LowerArm_R },
@@ -943,7 +992,7 @@ function bakeClips(b: Baker): THREE.AnimationClip[] {
   }));
   carry.tracks = carry.tracks.filter((t) => ARM_R_BONES.some((bone) => t.name.startsWith(`${bone}.`)));
 
-  return [idle, walk, wave, drink, happy, sad, sadWalk, run, ...bakeRelaxClips(b), carry];
+  return [idle, walk, wave, drink, happy, sad, sadWalk, run, takeTablet, ...bakeRelaxClips(b), carry];
 }
 
 function buildSkeleton(): { bones: Bones; root: THREE.Group } {

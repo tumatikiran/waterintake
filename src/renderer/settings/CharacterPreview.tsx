@@ -20,6 +20,7 @@ const ROLE_LABELS: Record<AnimationRole, string> = {
   Sad: 'Sad',
   SadWalk: 'Sad walk',
   Run: 'Run',
+  TakeTablet: 'Take tablet',
   SitDown: 'Sit down',
   Relax: 'Relax',
   StandUp: 'Stand up',
@@ -92,8 +93,8 @@ export function CharacterPreview({ source, onRig }: { source: CharacterSource; o
       await rig.animations.once('StandUp');
       if (rig.animations.playing !== 'StandUp') return;
     }
-    // Drinking needs the bottle; it's put away again afterwards.
-    rig.props.show(role === 'Drink' ? 'waterBottle' : null);
+    // Drinking needs the bottle and taking a tablet the pill bottle; they're put away again afterwards.
+    rig.props.show(role === 'Drink' ? 'waterBottle' : role === 'TakeTablet' ? 'pillBottle' : null);
     if (ANIMATION_ROLES[role].loop) return rig.animations.loop(role);
     await rig.animations.once(role);
     if (rig.animations.playing === role) {

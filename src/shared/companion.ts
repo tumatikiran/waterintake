@@ -51,6 +51,7 @@ export type CompanionEvent =
 export type CompanionScript =
   | 'arrive'
   | 'drank'
+  | 'tookMedicine'
   | 'later'
   | 'skip'
   | 'timeout'

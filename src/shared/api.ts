@@ -12,6 +12,7 @@ import type {
   ImportResult,
   ReminderContext,
   ReminderResponse,
+  ReminderTypeId,
   ResponseResult,
   SaveCreatedInput,
   Settings,
@@ -27,6 +28,10 @@ export interface AquaMateApi {
   updateSettings(patch: SettingsPatch): Promise<Settings>;
   /** Changes one reminder's settings (see shared/reminders.ts for each type's fields). */
   updateReminder(id: string, patch: Record<string, unknown>): Promise<Settings>;
+  /** Adds a reminder of a type with its defaults; resolves with its id. */
+  addReminder(type: ReminderTypeId): Promise<{ settings: Settings; id: string }>;
+  /** Deletes a reminder (the built-in water reminder can only be turned off). */
+  removeReminder(id: string): Promise<Settings>;
   /** Shows a reminder now (the water reminder when no id is given). */
   testReminder(id?: string): void;
   logGlass(): Promise<number>;

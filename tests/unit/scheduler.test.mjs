@@ -16,7 +16,7 @@ function setup(reminders, { busy = () => false } = {}) {
   const fired = [];
   const s = new ReminderScheduler({
     reminders: () => reminders,
-    doneToday: () => 0,
+    today: () => ({ done: 0, times: [] }),
     pauseWhenAway: () => false,
     isUserAway: () => false,
     isBusy: busy,

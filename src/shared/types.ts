@@ -30,7 +30,7 @@ export type IntervalMode = 'fixed' | 'goal';
  * scheduled, what the companion carries, the wording); everything else is
  * generic. Water is the built-in, permanent one.
  */
-export type ReminderTypeId = 'water';
+export type ReminderTypeId = 'water' | 'medicine';
 
 interface ReminderBase {
   id: string;
@@ -50,7 +50,18 @@ export interface WaterReminder extends ReminderBase {
   schedule: TimeWindow[];
 }
 
-export type Reminder = WaterReminder;
+/** Medicine: at fixed times on chosen days, reminded again until it's taken. */
+export interface MedicineReminder extends ReminderBase {
+  type: 'medicine';
+  dose: string; // "1 tablet"
+  notes: string; // "with food"
+  times: string[]; // "HH:MM", sorted
+  days: Weekday[];
+  repeatEveryMinutes: number; // remind again this often until taken…
+  repeatTimes: number; // …this many times (0: don't)
+}
+
+export type Reminder = WaterReminder | MedicineReminder;
 
 /** Choices that apply to every reminder. */
 export interface GeneralSettings {
@@ -127,7 +138,7 @@ export interface Progress {
 export interface ReminderContext {
   reason: ReminderReason;
   /** Which reminder (Relax mode: the water reminder, for wording only). */
-  reminder: { id: string; type: ReminderTypeId; name: string };
+  reminder: { id: string; type: ReminderTypeId; name: string; detail?: string };
   userName: string;
   progress: Progress | null;
   snoozeMinutes: number;

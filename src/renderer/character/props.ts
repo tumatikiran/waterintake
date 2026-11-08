@@ -24,13 +24,57 @@ export interface WaterBottleProp extends Prop {
   readonly bottle: WaterBottle;
 }
 
-export type AnyProp = WaterBottleProp;
+export interface SimpleProp extends Omit<Prop, 'id'> {
+  /** 'tablet' is never held on its own: it appears in the left hand while taking medicine. */
+  readonly id: Exclude<PropId, 'waterBottle'> | 'tablet';
+}
+
+export type AnyProp = WaterBottleProp | (SimpleProp & { id: Exclude<PropId, 'waterBottle'> });
+
+/** Builds a small prop from simple shapes; everything it creates is disposed with it. */
+function build(id: SimpleProp['id'], parts: Array<[THREE.BufferGeometry, string, Partial<THREE.MeshStandardMaterialParameters>?, [number, number, number]?]>): SimpleProp {
+  const object = new THREE.Group();
+  object.name = id;
+  const owned: Array<{ dispose(): void }> = [];
+  for (const [geo, color, extra, pos] of parts) {
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.45, ...extra });
+    const mesh = new THREE.Mesh(geo, mat);
+    if (pos) mesh.position.set(...pos);
+    mesh.frustumCulled = false;
+    object.add(mesh);
+    owned.push(geo, mat);
+  }
+  return { id, object, dispose: () => (object.removeFromParent(), owned.forEach((o) => o.dispose())) };
+}
+
+/** An amber pill bottle with a white cap and label (origin: where the hand grips it). */
+function pillBottle(): SimpleProp {
+  const r = 0.043;
+  return build('pillBottle', [
+    [new THREE.CylinderGeometry(r, r, 0.13, 24), '#c8741c', { transparent: true, opacity: 0.9, roughness: 0.25 }, [0, -0.005, 0]],
+    [new THREE.CylinderGeometry(r * 1.02, r * 1.02, 0.065, 24, 1, true), '#ffffff', { roughness: 0.6, side: THREE.DoubleSide }, [0, -0.012, 0]],
+    [new THREE.CylinderGeometry(r * 1.12, r * 1.12, 0.036, 24), '#f4f6f8', {}, [0, 0.076, 0]],
+  ]);
+}
+
+/** A two-tone capsule, oversized like the bottle so it reads at companion size. */
+export function tablet(): SimpleProp {
+  const geo = new THREE.CapsuleGeometry(0.014, 0.024, 4, 10);
+  geo.rotateZ(Math.PI / 2);
+  const half = new THREE.CylinderGeometry(0.0145, 0.0145, 0.016, 12, 1, true);
+  half.rotateZ(Math.PI / 2);
+  return build('tablet', [
+    [geo, '#ffffff', { roughness: 0.35 }],
+    [half, '#ef6f6c', { roughness: 0.35, side: THREE.DoubleSide }, [0.012, 0, 0]],
+  ]);
+}
 
 export const PROPS: Record<PropId, () => AnyProp> = {
   waterBottle: () => {
     const bottle = new WaterBottle();
     return { id: 'waterBottle', object: bottle.object, bottle, dispose: () => bottle.dispose() };
   },
+  pillBottle: pillBottle as () => SimpleProp & { id: 'pillBottle' },
 };
 
 /** How long a prop takes to appear or be put away (seconds). */
