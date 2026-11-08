@@ -274,6 +274,10 @@ This builds both apps, then runs three kinds of tests:
   - snooze, pause and resume
   - stopping once the goal is reached
   - cleaning up settings from older or hand-edited files
+  - the reminder list: upgrading older settings, the built-in water
+    reminder, per-reminder updates, and the per-reminder daily log
+  - the multi-reminder scheduler: one next time per reminder, reminders due
+    together shown one at a time, and a waiting reminder not holding up others
   - the companion's state machine (`src/shared/companion.ts`): every move
     between reminding, relaxing, sleeping and waking, on the desktop and on
     Android's Today screen
@@ -384,26 +388,34 @@ scripts/       generate-placeholder-model.mjs, generate-icons.mjs, dev.mjs, andr
 tests/         unit/, e2e.mjs (desktop), mobile-e2e.mjs + mobile-host.cjs (Android UI)
 ```
 
-- **Reminders run in the main process.** `scheduler.ts` checks the clock every
-  15 seconds instead of setting one long timer, so reminders survive sleep and
-  clock changes. All the rules are pure functions in `src/shared/schedule.ts`.
+- **Reminders are a list of typed reminders.** Water is built in; each type
+  (`src/shared/reminders.ts`) says how it's scheduled, what the companion
+  carries and how it's worded, so new kinds of reminders slot in without
+  changing the rest.
+- **Reminders run in the main process.** `scheduler.ts` keeps one next time
+  per reminder and checks the clock every 15 seconds instead of setting one
+  long timer, so reminders survive sleep and clock changes. Two due together
+  are shown one after the other. All the rules are pure functions in
+  `src/shared/schedule.ts`.
 - **The overlay is a full-width transparent strip** along the bottom of the
   screen. It's positioned while hidden and never moves while visible; the
   character walks inside it. The card is the only clickable area: the main
   process checks the cursor against the card, which works even though the
   overlay never takes focus.
-- **Behaviour is data.** Each interaction (`arrive`, `drank`, `later` and
-  `laterBack`, `skip`, `timeout` and `timeoutBack`) is a list of steps such as walk, face, play, loop, expression, say
-  and wait. `Director` runs the steps, and `Mascot` carries them out in time
-  with rendering. Walking speed matches each walk animation's stride, so the
-  feet don't slide.
+- **Behaviour is data.** Each interaction (`arrive`, `drank`, `later`,
+  `skip`, `timeout`, `relax`, `wake`, `doze`, …) is a list of steps such as
+  walk, face, play, loop, prop, expression, say and wait. A pure state machine
+  (`src/shared/companion.ts`) decides which to play; `Director` runs the
+  steps, and `Mascot` carries them out in time with rendering. Walking speed
+  matches each walk animation's stride, so the feet don't slide.
 - **Characters share one pipeline.**
   - The default, created and uploaded characters are all `.glb` files, turned
     into a `CharacterRig`: scaled to a common height, with animation roles, an
-    expression controller and a water bottle.
+    expression controller and a hand that holds props (the water bottle during
+    water reminders).
   - The default and created characters come from `procedural.ts`, which bakes
-    every clip with three constraints: feet stay on the ground, the bottle
-    stays upright in the hand, and while drinking an IK solve brings the
+    empty-handed clips with feet on the ground, plus a right-arm carry pose
+    used while holding something; while drinking an IK solve brings the
     bottle's cap to the mouth.
 - **Secure defaults:**
   - Context isolation, sandboxed renderers and no Node integration.
@@ -423,8 +435,8 @@ macOS and `%APPDATA%` on Windows.
 
 | File | Contents |
 | --- | --- |
-| `settings.json` | Your settings |
-| `today.json` | Today's glass count, which resets at midnight; there's no long-term history |
+| `settings.json` | Your settings and reminders (files from older versions are upgraded automatically) |
+| `today.json` | Today's log per reminder (glasses so far), which resets at midnight; there's no long-term history |
 | `characters/` | Your created and uploaded characters |
 
 ## Scope and known limitations

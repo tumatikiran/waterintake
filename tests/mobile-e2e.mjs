@@ -41,7 +41,7 @@ try {
   const pending = () =>
     page.evaluate(async () => {
       const { notifications } = await window.Capacitor.Plugins.LocalNotifications.getPending();
-      return notifications.map((n) => ({ id: n.id, at: new Date(n.schedule.at).getTime(), body: n.body, actionTypeId: n.actionTypeId }));
+      return notifications.map((n) => ({ id: n.id, at: new Date(n.schedule.at).getTime(), body: n.body, actionTypeId: n.actionTypeId, reminderId: n.extra?.reminderId }));
     });
   const card = page.getByTestId('reminder-card');
   // The closed scene is visibility:hidden, so wait for the state, not for visibility.
@@ -50,7 +50,7 @@ try {
 
   // A deterministic schedule: active all day.
   await page.waitForSelector('[data-testid=home-stage]', { timeout: 30000 });
-  await page.evaluate(() => window.aquamate.updateSettings({ reminders: { schedule: [{ days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '00:00' }] } }));
+  await page.evaluate(() => window.aquamate.updateReminder('water', { schedule: [{ days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '00:00' }] }));
 
   step("Today screen: the companion idles on stage, empty-handed, with the day's progress");
   await homeAnim('Idle', 30000);
@@ -72,6 +72,7 @@ try {
   assert.equal(plan[1].at - plan[0].at, 45 * 60_000, 'every 45 minutes');
   assert.equal(plan[0].actionTypeId, 'AQUAMATE_REMINDER');
   assert.equal(plan[0].body, 'Hey! Time to drink some water 💧');
+  assert.ok(plan.every((p) => p.reminderId === 'water'), 'each notification knows which reminder it is for');
 
   step('"I drank a glass" on the Today screen: he drinks along and cheers');
   await page.getByRole('button', { name: 'I drank a glass 💧' }).click();
@@ -150,8 +151,8 @@ try {
   await page.getByLabel('Your name').press('Enter');
   await sleep(300);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('CapacitorStorage.settings')));
-  assert.equal(saved.reminders.intervalMinutes, 30);
-  assert.equal(saved.reminders.dailyGoal, 9);
+  assert.equal(saved.reminders[0].intervalMinutes, 30);
+  assert.equal(saved.reminders[0].dailyGoal, 9);
   assert.equal(saved.userName, 'Sam');
   plan = await pending();
   assert.equal(plan[1].at - plan[0].at, 30 * 60_000, 'every 30 minutes now');
@@ -163,7 +164,7 @@ try {
 
   step('"Direction: Back the way they came" sends him back sadly the way he came after Drink Later');
   const leaving = (group, option) => page.getByRole('radiogroup', { name: group }).getByRole('radio', { name: option });
-  const savedReminders = () => page.evaluate(() => JSON.parse(localStorage.getItem('CapacitorStorage.settings')).reminders);
+  const savedReminders = () => page.evaluate(() => JSON.parse(localStorage.getItem('CapacitorStorage.settings')).general);
   await leaving('Direction', 'Back the way they came').click();
   await sleep(200);
   assert.equal((await savedReminders()).exitPath, 'back');

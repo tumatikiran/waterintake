@@ -24,7 +24,7 @@ export interface Leave {
 
 export type Step =
   | { do: 'stage'; at?: Mark } // place the character (default: off-screen right), empty hands, neutral face
-  | { do: 'prop'; id: PropId | null } // bring something out (or put it away); the arm switches to carrying it
+  | { do: 'prop'; id: PropId | 'reminder' | null } // bring something out (or put it away); 'reminder': the reminder type's item
   | { do: 'walk'; to: Mark | 'exit'; style?: 'normal' | 'sad' }
   | { do: 'face'; to: Facing }
   | { do: 'play'; animation: AnimationRole } // once, waits until it finishes
@@ -107,9 +107,9 @@ const REFRESHED_STAY: Step[] = [
   { do: 'expression', name: 'neutral' },
 ];
 
-/** Walk in carrying the bottle (it shows what the reminder is for), wave, remind. */
+/** Walk in carrying the reminder's item (it shows what the reminder is for), wave, remind. */
 const REMIND: Step[] = [
-  { do: 'prop', id: 'waterBottle' },
+  { do: 'prop', id: 'reminder' },
   { do: 'expression', name: 'neutral' },
   { do: 'walk', to: 'stop' },
   { do: 'face', to: 'user' },

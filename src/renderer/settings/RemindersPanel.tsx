@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import type { AppState, DeepPartial, ReminderSettings, Settings, TimeWindow, Weekday } from '../../shared/types';
-import { LIMITS } from '../../shared/settings';
+import type { AppState, GeneralSettings, TimeWindow, Weekday, WaterReminder } from '../../shared/types';
+import { LIMITS, type SettingsPatch } from '../../shared/settings';
+import { WATER_ID, waterReminder } from '../../shared/reminders';
 import { reminderInterval } from '../../shared/schedule';
 import { Row, Section, Segmented, Select, Stepper, ToggleRow } from './controls';
 
-const update = (patch: DeepPartial<Settings>) => window.aquamate.updateSettings(patch);
-const remind = (patch: Partial<ReminderSettings>) => update({ reminders: patch });
+const update = (patch: SettingsPatch) => window.aquamate.updateSettings(patch);
+/** The water reminder (the only type so far that this panel edits). */
+const remind = (patch: Partial<Omit<WaterReminder, 'id' | 'type'>>) => window.aquamate.updateReminder(WATER_ID, patch);
+const general = (patch: Partial<GeneralSettings>) => update({ general: patch });
 
 const INTERVALS = [15, 20, 30, 45, 60, 90, 120, 180].map((m) => ({ value: m, label: m < 60 ? `${m} minutes` : `${m / 60} hour${m === 60 ? '' : 's'}` }));
 const SNOOZES = [5, 10, 15, 20, 30, 45, 60].map((m) => ({ value: m, label: `${m} minutes` }));
@@ -31,7 +34,8 @@ const DAYS: { value: Weekday; short: string; long: string }[] = [
 const duration = (m: number) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
 
 export function RemindersPanel({ state }: { state: AppState }) {
-  const r = state.settings.reminders;
+  const r = waterReminder(state.settings.reminders);
+  const g = state.settings.general;
   const spread = reminderInterval({ ...r, mode: 'goal', stopWhenGoalReached: false }, state.status.glassesToday, Date.now());
   const goalInterval = typeof spread === 'number' ? spread : r.intervalMinutes;
 
@@ -70,8 +74,8 @@ export function RemindersPanel({ state }: { state: AppState }) {
         <Row stacked label="Direction">
           <Segmented
             label="Direction"
-            value={r.exitPath}
-            onChange={(exitPath) => remind({ exitPath })}
+            value={g.exitPath}
+            onChange={(exitPath) => general({ exitPath })}
             options={[
               { value: 'across', label: 'Across the screen' },
               { value: 'back', label: 'Back the way they came' },
@@ -81,8 +85,8 @@ export function RemindersPanel({ state }: { state: AppState }) {
         <Row label="Pace">
           <Segmented
             label="Pace"
-            value={r.exitGait}
-            onChange={(exitGait) => remind({ exitGait })}
+            value={g.exitGait}
+            onChange={(exitGait) => general({ exitGait })}
             options={[
               { value: 'walk', label: 'Walk' },
               { value: 'run', label: 'Run' },
@@ -115,14 +119,14 @@ export function RemindersPanel({ state }: { state: AppState }) {
           <ToggleRow
             label="Wait while I'm away"
             hint="Holds reminders while the computer is idle for 5 minutes or locked, then reminds you when you're back."
-            checked={r.pauseWhenAway}
-            onChange={(pauseWhenAway) => remind({ pauseWhenAway })}
+            checked={g.pauseWhenAway}
+            onChange={(pauseWhenAway) => general({ pauseWhenAway })}
           />
           <ToggleRow
             label="Also show a system notification"
             hint="Useful when a full-screen app hides the companion."
-            checked={r.systemNotification}
-            onChange={(systemNotification) => remind({ systemNotification })}
+            checked={g.systemNotification}
+            onChange={(systemNotification) => general({ systemNotification })}
           />
           <ToggleRow
             label="Start AquaMate when I log in"

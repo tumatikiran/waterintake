@@ -25,16 +25,37 @@ export type ExitGait = 'walk' | 'run';
 /** fixed: every N minutes. goal: spread the remaining daily goal over the remaining active time. */
 export type IntervalMode = 'fixed' | 'goal';
 
-export interface ReminderSettings {
+/**
+ * Reminder types. Each one is described once in shared/reminders.ts (how it's
+ * scheduled, what the companion carries, the wording); everything else is
+ * generic. Water is the built-in, permanent one.
+ */
+export type ReminderTypeId = 'water';
+
+interface ReminderBase {
+  id: string;
+  type: ReminderTypeId;
+  name: string;
   enabled: boolean;
+  snoozeMinutes: number; // "later"
+}
+
+/** Drink water: at an interval (or spread over the daily goal), inside active hours. */
+export interface WaterReminder extends ReminderBase {
+  type: 'water';
   mode: IntervalMode;
   intervalMinutes: number;
   dailyGoal: number; // glasses per day
   stopWhenGoalReached: boolean;
-  snoozeMinutes: number; // "Drink Later"
-  exitPath: ExitPath; // how he leaves every reminder: after drinking, Drink Later, ✕ or no answer
-  exitGait: ExitGait;
   schedule: TimeWindow[];
+}
+
+export type Reminder = WaterReminder;
+
+/** Choices that apply to every reminder. */
+export interface GeneralSettings {
+  exitPath: ExitPath; // how he leaves every reminder: after the answer, Later, ✕ or no answer
+  exitGait: ExitGait;
   pauseWhenAway: boolean; // hold reminders while the computer is idle or locked
   systemNotification: boolean; // also show an OS notification
 }
@@ -46,9 +67,10 @@ export interface RelaxSettings {
 }
 
 export interface Settings {
-  version: 1;
+  version: 2;
   userName: string;
-  reminders: ReminderSettings;
+  reminders: Reminder[];
+  general: GeneralSettings;
   relax: RelaxSettings;
   characterId: string;
   openAtLogin: boolean;
@@ -92,14 +114,22 @@ export interface CharacterInfo {
 
 // -------------------------------------------------------------- reminders --
 export type ReminderReason = 'scheduled' | 'snoozed' | 'manual';
-export type ReminderResponse = 'drank' | 'later' | 'skip' | 'timeout';
+/** done: did it (drank, took it…). Older Android notifications may still say 'drank'. */
+export type ReminderResponse = 'done' | 'later' | 'skip' | 'timeout';
+
+/** Today's progress for reminders that count towards a goal (glasses of water). */
+export interface Progress {
+  done: number;
+  goal: number;
+}
 
 /** Sent to the overlay when a reminder starts. */
 export interface ReminderContext {
   reason: ReminderReason;
+  /** Which reminder (Relax mode: the water reminder, for wording only). */
+  reminder: { id: string; type: ReminderTypeId; name: string };
   userName: string;
-  glassesToday: number;
-  dailyGoal: number;
+  progress: Progress | null;
   snoozeMinutes: number;
   exitPath: ExitPath;
   exitGait: ExitGait;
@@ -109,21 +139,31 @@ export interface ReminderContext {
   /** Relax mode only: how long the companion rests before dozing off (0 = never). */
   dozeAfterMinutes?: number;
   /** Already answered with a notification button (Android): play that response right after arriving. */
-  answer?: 'drank' | 'later';
+  answer?: 'done' | 'later';
 }
 
 /** Returned to the overlay after the user answers. */
 export interface ResponseResult {
-  glassesToday: number;
-  dailyGoal: number;
+  progress: Progress | null;
   goalReached: boolean;
   snoozeMinutes: number;
   exitPath: ExitPath;
   exitGait: ExitGait;
 }
 
+/** One reminder's day so far. */
+export interface ReminderStatus {
+  nextAt: number | null;
+  done: number;
+  shown: number;
+  times: number[];
+}
+
 export interface StatusSnapshot {
+  /** The water reminder's count, used all over the UI. */
   glassesToday: number;
+  /** Every reminder's next time and today's log, by id. */
+  reminders: Record<string, ReminderStatus>;
   nextReminderAt: number | null;
   pausedUntil: number | null;
   reminderActive: boolean;

@@ -11,7 +11,7 @@ const { DEFAULT_SETTINGS } = require('../../dist-electron/shared/settings.js');
 const MIN = 60_000;
 // 2026-11-06 is a Friday, 2026-11-09 a Monday.
 const t = (d, hh, mm = 0) => new Date(2026, 10, d, hh, mm).getTime();
-const reminders = (patch = {}) => ({ ...structuredClone(DEFAULT_SETTINGS.reminders), ...patch });
+const reminders = (patch = {}) => ({ ...structuredClone(DEFAULT_SETTINGS.reminders[0]), ...patch });
 const every = { days: [0, 1, 2, 3, 4, 5, 6], start: '09:00', end: '21:00' };
 const weekdays = { days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' };
 const night = { days: [0, 1, 2, 3, 4, 5, 6], start: '22:00', end: '06:00' };
@@ -46,30 +46,30 @@ test('nextWindowStart skips days that are not selected', () => {
 });
 
 test('fixed interval inside the window', () => {
-  const next = S.nextReminderTime({ settings: reminders(), now: t(6, 10), glassesToday: 0, after: 'drank' });
+  const next = S.nextReminderTime({ reminder: reminders(), now: t(6, 10), doneToday: 0, after: 'done' });
   assert.equal(next, t(6, 10, 45));
 });
 
 test('a reminder that would land after hours moves to the next window', () => {
-  const next = S.nextReminderTime({ settings: reminders(), now: t(6, 20, 30), glassesToday: 3, after: 'skip' });
+  const next = S.nextReminderTime({ reminder: reminders(), now: t(6, 20, 30), doneToday: 3, after: 'skip' });
   assert.equal(next, t(7, 9));
 });
 
 test('Drink Later snoozes for snoozeMinutes', () => {
-  const next = S.nextReminderTime({ settings: reminders({ snoozeMinutes: 10 }), now: t(6, 12), glassesToday: 0, after: 'later' });
+  const next = S.nextReminderTime({ reminder: reminders({ snoozeMinutes: 10 }), now: t(6, 12), doneToday: 0, after: 'later' });
   assert.equal(next, t(6, 12, 10));
 });
 
 test('disabled reminders never fire', () => {
-  assert.equal(S.nextReminderTime({ settings: reminders({ enabled: false }), now: t(6, 12), glassesToday: 0, after: 'start' }), null);
+  assert.equal(S.nextReminderTime({ reminder: reminders({ enabled: false }), now: t(6, 12), doneToday: 0, after: 'start' }), null);
 });
 
 test('goal mode spreads the remaining glasses over the remaining active time', () => {
   const settings = reminders({ mode: 'goal', dailyGoal: 8 });
   // 09:00–21:00 is 720 minutes; 8 glasses → every 90 minutes.
-  assert.equal(S.nextReminderTime({ settings, now: t(6, 9), glassesToday: 0, after: 'start' }), t(6, 10, 30));
+  assert.equal(S.nextReminderTime({ reminder: settings, now: t(6, 9), doneToday: 0, after: 'start' }), t(6, 10, 30));
   // Behind schedule at 15:00 with 6 left: 360 / 6 = 60 minutes.
-  assert.equal(S.nextReminderTime({ settings, now: t(6, 15), glassesToday: 2, after: 'drank' }), t(6, 16));
+  assert.equal(S.nextReminderTime({ reminder: settings, now: t(6, 15), doneToday: 2, after: 'done' }), t(6, 16));
   // Never more often than every 20 minutes.
   assert.equal(S.reminderInterval(settings, 0, t(6, 20, 30)), 20);
   // Never less often than every 180 minutes.
@@ -78,13 +78,13 @@ test('goal mode spreads the remaining glasses over the remaining active time', (
 
 test('goal reached: stop until tomorrow, or keep the fixed interval', () => {
   const stop = reminders({ mode: 'goal', dailyGoal: 4, stopWhenGoalReached: true });
-  assert.equal(S.nextReminderTime({ settings: stop, now: t(6, 14), glassesToday: 4, after: 'drank' }), t(7, 9));
+  assert.equal(S.nextReminderTime({ reminder: stop, now: t(6, 14), doneToday: 4, after: 'done' }), t(7, 9));
   const keepGoing = reminders({ mode: 'goal', dailyGoal: 4, intervalMinutes: 60 });
-  assert.equal(S.nextReminderTime({ settings: keepGoing, now: t(6, 14), glassesToday: 5, after: 'drank' }), t(6, 15));
+  assert.equal(S.nextReminderTime({ reminder: keepGoing, now: t(6, 14), doneToday: 5, after: 'done' }), t(6, 15));
 });
 
 test('resume after a pause nudges a minute later', () => {
-  assert.equal(S.nextReminderTime({ settings: reminders(), now: t(6, 11), glassesToday: 0, after: 'resume' }), t(6, 11, 1));
+  assert.equal(S.nextReminderTime({ reminder: reminders(), now: t(6, 11), doneToday: 0, after: 'resume' }), t(6, 11, 1));
 });
 
 test('remainingActiveMinutesToday counts overnight windows up to midnight', () => {
@@ -96,18 +96,18 @@ test('remainingActiveMinutesToday counts overnight windows up to midnight', () =
 });
 
 test('planReminders lists the next reminders (Android schedules them ahead)', () => {
-  const plan = S.planReminders({ settings: reminders(), now: t(6, 10), glassesToday: 0, after: 'drank', count: 4 });
+  const plan = S.planReminders({ reminder: reminders(), now: t(6, 10), doneToday: 0, after: 'done', count: 4 });
   assert.deepEqual(plan.map((p) => p.at), [t(6, 10, 45), t(6, 11, 30), t(6, 12, 15), t(6, 13)]);
   assert.ok(plan.every((p) => !p.snoozed));
 });
 
 test('planReminders continues into the next active window', () => {
-  const plan = S.planReminders({ settings: reminders({ intervalMinutes: 60 }), now: t(6, 19, 30), glassesToday: 2, after: 'skip', count: 3 });
+  const plan = S.planReminders({ reminder: reminders({ intervalMinutes: 60 }), now: t(6, 19, 30), doneToday: 2, after: 'skip', count: 3 });
   assert.deepEqual(plan.map((p) => p.at), [t(6, 20, 30), t(7, 9), t(7, 10)]);
 });
 
 test('planReminders: a snooze comes first, then the normal rhythm', () => {
-  const plan = S.planReminders({ settings: reminders(), now: t(6, 12), glassesToday: 1, after: 'later', count: 2 });
+  const plan = S.planReminders({ reminder: reminders(), now: t(6, 12), doneToday: 1, after: 'later', count: 2 });
   assert.deepEqual(plan, [
     { at: t(6, 12, 15), snoozed: true },
     { at: t(6, 13), snoozed: false },
@@ -115,13 +115,13 @@ test('planReminders: a snooze comes first, then the normal rhythm', () => {
 });
 
 test('planReminders: while paused, start a minute after the pause ends', () => {
-  const plan = S.planReminders({ settings: reminders(), now: t(6, 12), glassesToday: 1, after: 'start', count: 1, pausedUntil: t(6, 13) });
+  const plan = S.planReminders({ reminder: reminders(), now: t(6, 12), doneToday: 1, after: 'start', count: 1, pausedUntil: t(6, 13) });
   assert.equal(plan[0].at, t(6, 13, 1));
 });
 
 test('planReminders: goal mode resets the count on the next day', () => {
   const settings = reminders({ mode: 'goal', dailyGoal: 4, stopWhenGoalReached: true });
-  const plan = S.planReminders({ settings, now: t(6, 15), glassesToday: 4, after: 'drank', count: 2 });
+  const plan = S.planReminders({ reminder: settings, now: t(6, 15), doneToday: 4, after: 'done', count: 2 });
   assert.equal(plan[0].at, t(7, 9), 'goal met: tomorrow');
   assert.equal(plan[1].at, t(7, 12), 'tomorrow the 4 glasses are spread over 720 minutes (capped at 180)');
 });

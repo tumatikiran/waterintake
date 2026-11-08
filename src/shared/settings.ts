@@ -1,74 +1,55 @@
-import type { DeepPartial, ExitPath, RelaxSettings, ReminderSettings, Settings, TimeWindow, Weekday } from './types';
-import { parseTime } from './schedule';
+import type { DeepPartial, ExitPath, GeneralSettings, RelaxSettings, Reminder, Settings } from './types';
+import { LIMITS as REMINDER_LIMITS, REMINDER_TYPES, WATER_ID, sanitizeReminder } from './reminders';
+import { ALL_DAYS, bool, isObj } from './sanitize';
 
-export const ALL_DAYS: Weekday[] = [0, 1, 2, 3, 4, 5, 6];
+export { ALL_DAYS };
 
 export const DEFAULT_SETTINGS: Settings = {
-  version: 1,
+  version: 2,
   userName: '',
-  reminders: {
-    enabled: true,
-    mode: 'fixed',
-    intervalMinutes: 45,
-    dailyGoal: 8,
-    stopWhenGoalReached: false,
-    snoozeMinutes: 15,
-    exitPath: 'across',
-    exitGait: 'walk',
-    schedule: [{ days: [...ALL_DAYS], start: '09:00', end: '21:00' }],
-    pauseWhenAway: true,
-    systemNotification: false,
-  },
+  reminders: [REMINDER_TYPES.water.create(WATER_ID)],
+  general: { exitPath: 'across', exitGait: 'walk', pauseWhenAway: true, systemNotification: false },
   relax: { dozeAfterMinutes: 3, durationMinutes: 0 },
   characterId: 'default',
   openAtLogin: false,
 };
 
 export const LIMITS = {
-  intervalMinutes: [5, 240],
-  dailyGoal: [1, 30],
-  snoozeMinutes: [1, 120],
+  ...REMINDER_LIMITS,
   relaxMinutes: [0, 240],
   userName: 32,
-  scheduleWindows: 8,
 } as const;
 
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
 const exitPath = (v: unknown, d: ExitPath): ExitPath => (v === 'across' || v === 'back' ? v : d);
-const int = (v: unknown, [min, max]: readonly [number, number], d: number) =>
-  typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : d;
 
-function sanitizeWindow(v: unknown): TimeWindow | null {
-  if (!isObj(v)) return null;
-  const start = typeof v.start === 'string' && parseTime(v.start) !== null ? v.start : null;
-  const end = typeof v.end === 'string' && parseTime(v.end) !== null ? v.end : null;
-  if (!start || !end || !Array.isArray(v.days)) return null;
-  const days = [...new Set(v.days.filter((d): d is Weekday => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
-  return { days, start, end };
+function sanitizeGeneral(v: unknown, legacy: Record<string, unknown>): GeneralSettings {
+  const d = DEFAULT_SETTINGS.general;
+  // Version 1 kept these with the (only) reminder; laterExit is older still (Drink Later only).
+  const g = isObj(v) ? v : legacy;
+  return {
+    exitPath: exitPath(g.exitPath ?? g.laterExit, d.exitPath),
+    exitGait: g.exitGait === 'walk' || g.exitGait === 'run' ? g.exitGait : d.exitGait,
+    pauseWhenAway: bool(g.pauseWhenAway, d.pauseWhenAway),
+    systemNotification: bool(g.systemNotification, d.systemNotification),
+  };
 }
 
-function sanitizeReminders(v: unknown): ReminderSettings {
-  const d = DEFAULT_SETTINGS.reminders;
-  const r = isObj(v) ? v : {};
-  const schedule = Array.isArray(r.schedule)
-    ? r.schedule.map(sanitizeWindow).filter((w): w is TimeWindow => w !== null).slice(0, LIMITS.scheduleWindows)
-    : [];
-  return {
-    enabled: bool(r.enabled, d.enabled),
-    mode: r.mode === 'goal' || r.mode === 'fixed' ? r.mode : d.mode,
-    intervalMinutes: int(r.intervalMinutes, LIMITS.intervalMinutes, d.intervalMinutes),
-    dailyGoal: int(r.dailyGoal, LIMITS.dailyGoal, d.dailyGoal),
-    stopWhenGoalReached: bool(r.stopWhenGoalReached, d.stopWhenGoalReached),
-    snoozeMinutes: int(r.snoozeMinutes, LIMITS.snoozeMinutes, d.snoozeMinutes),
-    // laterExit: the Drink Later-only setting this replaced; keep the user's choice.
-    exitPath: exitPath(r.exitPath ?? r.laterExit, d.exitPath),
-    exitGait: r.exitGait === 'walk' || r.exitGait === 'run' ? r.exitGait : d.exitGait,
-    // An empty schedule would silently mean "never remind", so fall back to the default.
-    schedule: schedule.length ? schedule : d.schedule.map((w) => ({ ...w, days: [...w.days] })),
-    pauseWhenAway: bool(r.pauseWhenAway, d.pauseWhenAway),
-    systemNotification: bool(r.systemNotification, d.systemNotification),
-  };
+/**
+ * The reminder list: valid reminders with unique ids, and the built-in water
+ * reminder always present (first). Version 1 had one water reminder as an object.
+ */
+function sanitizeReminders(v: unknown): Reminder[] {
+  const raw: unknown[] = Array.isArray(v) ? v : isObj(v) ? [{ ...v, id: WATER_ID, type: 'water' }] : [];
+  const seen = new Set<string>();
+  const out: Reminder[] = [];
+  raw.forEach((item, i) => {
+    const r = sanitizeReminder(item, `r${i + 1}`);
+    if (!r || seen.has(r.id) || out.length >= LIMITS.reminders) return;
+    seen.add(r.id);
+    out.push(r);
+  });
+  const water = out.find((r) => r.id === WATER_ID) ?? REMINDER_TYPES.water.create(WATER_ID);
+  return [water, ...out.filter((r) => r.id !== WATER_ID)];
 }
 
 function sanitizeRelax(v: unknown): RelaxSettings {
@@ -80,13 +61,15 @@ function sanitizeRelax(v: unknown): RelaxSettings {
   return { dozeAfterMinutes: minutes(r.dozeAfterMinutes, d.dozeAfterMinutes), durationMinutes: minutes(r.durationMinutes, d.durationMinutes) };
 }
 
-/** Turns anything (an old or hand-edited settings file) into valid Settings. */
+/** Turns anything (an older or hand-edited settings file) into valid Settings. */
 export function sanitizeSettings(v: unknown): Settings {
   const s = isObj(v) ? v : {};
+  const legacy = isObj(s.reminders) ? s.reminders : {};
   return {
-    version: 1,
+    version: 2,
     userName: typeof s.userName === 'string' ? s.userName.trim().slice(0, LIMITS.userName) : '',
     reminders: sanitizeReminders(s.reminders),
+    general: sanitizeGeneral(s.general, legacy),
     relax: sanitizeRelax(s.relax),
     characterId:
       typeof s.characterId === 'string' && /^[\w-]{1,64}$/.test(s.characterId) ? s.characterId : DEFAULT_SETTINGS.characterId,
@@ -94,10 +77,20 @@ export function sanitizeSettings(v: unknown): Settings {
   };
 }
 
+/** A settings update from the UI. The reminder list isn't patched this way: see withReminderPatch. */
+export type SettingsPatch = DeepPartial<Omit<Settings, 'reminders' | 'version'>>;
+
 /** Applies a partial update (as sent by the settings UI) and re-validates. */
-export function mergeSettings(current: Settings, patch: DeepPartial<Settings>): Settings {
+export function mergeSettings(current: Settings, patch: SettingsPatch): Settings {
   const p = isObj(patch) ? (patch as Record<string, unknown>) : {};
-  const reminders = isObj(p.reminders) ? { ...current.reminders, ...p.reminders } : current.reminders;
+  const general = isObj(p.general) ? { ...current.general, ...p.general } : current.general;
   const relax = isObj(p.relax) ? { ...current.relax, ...p.relax } : current.relax;
-  return sanitizeSettings({ ...current, ...p, reminders, relax });
+  return sanitizeSettings({ ...current, ...p, reminders: current.reminders, general, relax });
+}
+
+/** Changes one reminder (its id and type stay); unknown ids change nothing. */
+export function withReminderPatch(current: Settings, id: string, patch: Record<string, unknown>): Settings {
+  if (!isObj(patch) || !current.reminders.some((r) => r.id === id)) return current;
+  const reminders = current.reminders.map((r) => (r.id === id ? { ...r, ...patch, id: r.id, type: r.type } : r));
+  return sanitizeSettings({ ...current, reminders });
 }

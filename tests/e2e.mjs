@@ -17,6 +17,20 @@ const require = createRequire(import.meta.url);
 const OUT = resolve('test-results');
 mkdirSync(OUT, { recursive: true });
 const userData = mkdtempSync(join(tmpdir(), 'aquamate-e2e-'));
+// Start from an older version's files: settings with one water reminder object (version 1)
+// and a glasses-only daily log. The app must upgrade them.
+writeFileSync(
+  join(userData, 'settings.json'),
+  JSON.stringify({
+    version: 1,
+    userName: '',
+    reminders: { enabled: true, mode: 'fixed', intervalMinutes: 45, dailyGoal: 8, snoozeMinutes: 15, laterExit: 'across', exitGait: 'walk' },
+    characterId: 'default',
+  }),
+);
+const d = new Date();
+const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+writeFileSync(join(userData, 'today.json'), JSON.stringify({ date: today, glasses: 0, reminders: 0 }));
 
 const packaged = process.env.AQUAMATE_EXECUTABLE;
 const args = packaged ? [] : ['.'];
@@ -74,12 +88,19 @@ try {
 
   // Deterministic schedule for the test: active all day, every day.
   await settings.evaluate(() =>
-    window.aquamate.updateSettings({ reminders: { schedule: [{ days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '00:00' }] } }),
+    window.aquamate.updateReminder('water', { schedule: [{ days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '00:00' }] }),
   );
+
+  step('upgrades an older settings file: one water reminder in a list, app-wide choices in general');
+  const upgraded = (await state()).settings;
+  assert.equal(upgraded.version, 2);
+  assert.deepEqual(upgraded.reminders.map((r) => [r.id, r.type, r.intervalMinutes]), [['water', 'water', 45]]);
+  assert.deepEqual([upgraded.general.exitPath, upgraded.general.exitGait], ['across', 'walk']);
 
   step('starts with the overlay hidden and nothing logged');
   assert.equal((await overlayWindow()).visible, false);
   assert.equal((await state()).status.glassesToday, 0);
+  assert.equal((await state()).status.reminders.water.done, 0);
 
   // ------------------------------------------------------ "I Drank Water"
   step('Test reminder → walks in from the right carrying a full water bottle (it shows what the reminder is for)');
@@ -179,14 +200,16 @@ try {
   await settings.getByLabel('Your name').press('Enter');
   await sleep(300);
   const saved = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8'));
-  assert.equal(saved.reminders.intervalMinutes, 30);
-  assert.equal(saved.reminders.dailyGoal, 9);
-  assert.equal(saved.reminders.stopWhenGoalReached, true);
-  assert.equal(saved.reminders.schedule.length, 2);
+  assert.equal(saved.version, 2);
+  const savedWater = saved.reminders.find((r) => r.id === 'water');
+  assert.equal(savedWater.intervalMinutes, 30);
+  assert.equal(savedWater.dailyGoal, 9);
+  assert.equal(savedWater.stopWhenGoalReached, true);
+  assert.equal(savedWater.schedule.length, 2);
   assert.equal(saved.userName, 'Sam');
   await settings.getByRole('radio', { name: 'Spread my goal' }).click();
   await settings.getByText(/About every/).waitFor();
-  assert.equal(JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders.mode, 'goal');
+  assert.equal(JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders[0].mode, 'goal');
   await settings.getByRole('radio', { name: 'Fixed interval' }).click();
   await settings.evaluate(() => document.querySelector('.tab-panel').scrollTo(0, 0));
   await settings.screenshot({ path: join(OUT, '5-settings-reminders.png') });
@@ -195,7 +218,7 @@ try {
   const leaving = (group, option) => settings.getByRole('radiogroup', { name: group }).getByRole('radio', { name: option });
   await leaving('Direction', 'Back the way they came').click();
   await sleep(200);
-  assert.equal(JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders.exitPath, 'back');
+  assert.equal(JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).general.exitPath, 'back');
   await testReminder();
   await phase('waiting');
   await card.getByRole('button', { name: 'Drink Later' }).click();
@@ -213,7 +236,7 @@ try {
   step('"Direction: Back the way they came" + "Pace: Run": after drinking he runs back the way he came');
   await leaving('Pace', 'Run').click();
   await sleep(200);
-  const pace = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).reminders;
+  const pace = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).general;
   assert.equal(pace.exitPath, 'back');
   assert.equal(pace.exitGait, 'run');
   await testReminder();

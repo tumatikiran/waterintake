@@ -1,22 +1,24 @@
 # Extending AquaMate
 
-AquaMate is built so that new animations, expressions, interactions and
-reminder rules can be added without touching how things fit together. This
-page shows where each kind of change goes.
+AquaMate is built so that new reminder types, animations, props,
+expressions, interactions and reminder rules can be added without touching
+how things fit together. This page shows where each kind of change goes.
 
 ```
 main process                         renderer (overlay window)
 ────────────                         ─────────────────────────
 ReminderScheduler ──fire──▶ WindowManager ──reminder:start(ctx)──▶ Overlay
-  (shared/schedule.ts)                                              │
-DailyLog, settings.json                                          Director ── runs ──▶ INTERACTIONS (data)
+  one slot per reminder;                                            │  companionStep() (shared/companion.ts)
+  REMINDER_TYPES (shared/reminders.ts)                              │  decides what to play next
+DailyLog (per reminder), settings.json                           Director ── runs ──▶ INTERACTIONS (data)
 CharacterStore (.glb files)                                         │
                        ◀──reminder:respond(kind)────────────────  Actor (Mascot.tsx)
                                                                     │
                                                               CharacterRig
                                                    ┌────────────────┼────────────────┐
-                                          AnimationController  ExpressionController  WaterBottle
-                                          (roles + fallbacks)   (morph channels)     (water level)
+                                          AnimationController  ExpressionController  HandProps
+                                          (roles, fallbacks,    (morph channels)     (what's in the hand:
+                                           right-arm carry pose)                      water bottle, …)
 ```
 
 ## One UI, two platforms
@@ -45,16 +47,19 @@ automatically.
    to `bakeClips()`.
    - `rot` holds Euler angles per bone.
    - Feet stay on the ground automatically. Set `grounded: false` for jumps.
-   - The bottle stays upright automatically.
-   - `drink: { weight, tilt }` brings the bottle to the mouth.
+   - Clips are empty-handed: while the character holds a prop, the right
+     arm plays the `HandCarry` pose instead (unless the role is in
+     `ARMS_OWN`, like `Drink`).
+   - `holding: true` keeps whatever is in the hand upright;
+     `drink: { weight, tilt }` brings the bottle to the mouth.
 3. **Regenerate the default model:**
 
    ```bash
    npm run generate:model
    ```
 
-   Characters made in the creator pick up the new clip the next time they're
-   saved.
+   Characters made in the creator get the new clip straight away: AquaMate's
+   own characters always load the current clips.
 4. **Use it** in an interaction: `{ do: 'play', animation: 'MyRole' }` (waits
    until it finishes) or `{ do: 'loop', animation: 'MyRole' }`.
 
@@ -90,22 +95,48 @@ celebrateGoal: [
 1. Add any new `message` keys to `src/renderer/behavior/messages.ts`. Messages
    get the reminder context (name, time of day, glasses so far, goal), so they
    can be personal.
-2. Start the interaction from `Overlay.tsx` with `director.run('celebrateGoal')`.
-   Starting a new interaction cancels the one that's running.
+2. Decide when it plays in the companion's state machine
+   (`src/shared/companion.ts`): add an event or a transition that names the
+   script, and a unit test in `tests/unit/companion.test.mjs`. The overlay and
+   Android's Today screen play whatever a transition asks for. Starting a new
+   interaction cancels the one that's running.
+   - `{ do: 'prop', id: 'reminder' }` puts the reminder type's item in the hand.
 3. If it needs new information from the main process, add a field to
    `ReminderContext` or `ResponseResult` in `src/shared/types.ts`.
 
+## Add a reminder type
+
+Settings hold a list of reminders (`settings.reminders`); each has an `id`, a
+`type` and that type's own fields. The water reminder (`id: 'water'`) always
+exists. Everything that differs between types lives in one place:
+
+1. Add the type's id to `ReminderTypeId` and its fields as a new member of
+   `Reminder` in `src/shared/types.ts`.
+2. Describe it in `REMINDER_TYPES` (`src/shared/reminders.ts`):
+   - `create` and `sanitize` (defaults and validation)
+   - `next` (when it fires; pure, unit-tested) and `progress` (a goal, or null)
+   - `prop` (what the companion carries in) and `doneScript` (what "done" plays)
+   - `duringRelax` (`wait` or `wake`), `priority` (who goes first when two are due)
+   - button labels and notification text
+3. Give it card wording in `WORDING` (`src/renderer/behavior/messages.ts`).
+4. If it carries something new, add the prop to `PROPS`
+   (`src/renderer/character/props.ts`) and to `PropName`.
+
+The scheduler, the daily log, the overlay, the state machine and Android's
+notifications are generic: they ask the type.
+
 ## Add a reminder rule
 
-1. Put the rule in `src/shared/schedule.ts` as a pure function. Write its unit
-   test in `tests/unit/schedule.test.mjs` first.
-2. Add the setting to `ReminderSettings` (`src/shared/types.ts`), its default
-   and validation to `src/shared/settings.ts`, and a control to
+1. Put the rule in `src/shared/schedule.ts` (or the type's `next`) as a pure
+   function. Write its unit test in `tests/unit/schedule.test.mjs` first.
+2. Add the setting to the reminder type (`src/shared/types.ts` and its
+   `sanitize` in `src/shared/reminders.ts`), or to `GeneralSettings` if it
+   applies to every reminder, and a control to
    `src/renderer/settings/RemindersPanel.tsx`.
-3. `ReminderScheduler` (`src/main/scheduler.ts`) calls
-   `nextReminderTime()` after every event (`start`, `settings`, `drank`,
-   `skip`, `later`, `resume`). Conditions checked when a reminder is due
-   (like "wait while away") go in `tick()`.
+3. `ReminderScheduler` (`src/main/scheduler.ts`) keeps one slot per reminder
+   and recomputes it after every event (`start`, `settings`, `done`, `skip`,
+   `later`, `resume`). Conditions checked when a reminder is due (like "wait
+   while away") go in `tick()`.
 
 ## Add an IPC call
 

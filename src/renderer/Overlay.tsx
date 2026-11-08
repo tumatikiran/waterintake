@@ -7,6 +7,7 @@ import { Zzz } from './Zzz';
 import { sourceKey, type CharacterSource } from './character/assets';
 import { Director, type Actor } from './behavior/Director';
 import type { InteractionName, Leave, Step } from './behavior/interactions';
+import { REMINDER_TYPES } from '../shared/reminders';
 import { companionStep, OFFSTAGE, type CompanionEvent, type CompanionMode, type CompanionScript, type CompanionState } from '../shared/companion';
 import { renderMessage, type CardMessage, type MessageKey } from './behavior/messages';
 
@@ -99,7 +100,8 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
       if (!director) return finish();
       for (const script of t.scripts) {
         setPhase(script);
-        if (!(await director.run(script, leaveFor(result.current ?? ctx.current)))) return; // something newer took over
+        const scene = { leave: leaveFor(result.current ?? ctx.current), prop: ctx.current ? REMINDER_TYPES[ctx.current.reminder.type].prop : null };
+        if (!(await director.run(script, scene))) return; // something newer took over
       }
       if (machine.current.mode === 'reminding') arrived.current();
       else dispatchRef.current({ type: 'done' });
@@ -120,7 +122,9 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
         result.current = null;
       }
       if (!director || sceneFailed) return finish(); // card only: nobody to walk off
-      void dispatch({ type: 'answer', kind });
+      // "Done" plays the type's own script (drinking, for water).
+      const type = ctx.current ? REMINDER_TYPES[ctx.current.reminder.type] : null;
+      void dispatch({ type: 'answer', kind: kind === 'done' ? (type?.doneScript ?? 'skip') : kind });
     },
     [director, sceneFailed, dispatch, finish],
   );
@@ -259,7 +263,8 @@ export function Overlay({ layout = 'desktop', active = true }: OverlayProps) {
         ref={cardRef}
         message={card.message}
         actions={card.actions}
-        onDrank={() => answer('drank')}
+        labels={ctx.current ? REMINDER_TYPES[ctx.current.reminder.type].labels : undefined}
+        onDone={() => answer('done')}
         onLater={() => answer('later')}
         onSkip={() => answer('skip')}
       />

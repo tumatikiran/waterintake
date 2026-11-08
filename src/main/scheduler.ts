@@ -1,5 +1,6 @@
-import type { ReminderReason, ReminderSettings } from '../shared/types';
-import { nextReminderTime, type ScheduleTrigger } from '../shared/schedule';
+import type { Reminder, ReminderReason } from '../shared/types';
+import type { ScheduleTrigger } from '../shared/schedule';
+import { nextTime, typeOf } from '../shared/reminders';
 
 /**
  * Short ticks that compare against the wall clock (never one long setTimeout),
@@ -10,20 +11,31 @@ const TICK_MS = 15_000;
 const RESPONSE_TIMEOUT_MS = 10 * 60_000;
 
 export interface SchedulerDeps {
-  settings(): ReminderSettings;
-  glassesToday(): number;
+  reminders(): Reminder[];
+  doneToday(id: string): number;
+  pauseWhenAway(): boolean;
   isUserAway(): boolean;
-  isBusy(): boolean;
-  fire(reason: ReminderReason): void;
+  /** This reminder can't be shown right now (something else is on screen, or it waits for Relax mode to end). */
+  isBusy(reminder: Reminder): boolean;
+  fire(reminder: Reminder, reason: ReminderReason): void;
   changed(): void;
   now?: () => number;
 }
 
+interface Slot {
+  nextAt: number | null;
+  snoozed: boolean;
+}
+
+/**
+ * Keeps one next time per reminder and shows due ones one at a time: two
+ * reminders due together are shown one after the other, the higher-priority
+ * type first.
+ */
 export class ReminderScheduler {
-  nextAt: number | null = null;
   pausedUntil: number | null = null;
-  private snoozed = false;
-  private shownAt: number | null = null;
+  private readonly slots = new Map<string, Slot>();
+  private shown: { id: string; at: number } | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly deps: SchedulerDeps) {}
@@ -32,8 +44,19 @@ export class ReminderScheduler {
     return this.deps.now?.() ?? Date.now();
   }
 
+  /** The soonest reminder of all (null: nothing scheduled). */
+  get nextAt(): number | null {
+    let min: number | null = null;
+    for (const s of this.slots.values()) if (s.nextAt !== null && (min === null || s.nextAt < min)) min = s.nextAt;
+    return min;
+  }
+
+  nextFor(id: string): number | null {
+    return this.slots.get(id)?.nextAt ?? null;
+  }
+
   start(): void {
-    this.reschedule('start');
+    this.sync('start');
     this.timer ??= setInterval(() => this.tick(), TICK_MS);
   }
 
@@ -42,16 +65,20 @@ export class ReminderScheduler {
     this.timer = null;
   }
 
-  /** Recompute the next reminder after something happened. */
-  reschedule(after: ScheduleTrigger): void {
-    this.shownAt = null;
-    this.snoozed = after === 'later';
-    this.nextAt = nextReminderTime({
-      settings: this.deps.settings(),
-      now: this.now(),
-      glassesToday: this.deps.glassesToday(),
-      after,
-    });
+  /** Reminders were added, removed or changed: recompute every one. */
+  sync(after: ScheduleTrigger = 'settings'): void {
+    const reminders = this.deps.reminders();
+    for (const id of this.slots.keys()) if (!reminders.some((r) => r.id === id)) this.slots.delete(id);
+    if (this.shown && !reminders.some((r) => r.id === this.shown!.id)) this.shown = null;
+    for (const r of reminders) this.compute(r, after);
+    this.deps.changed();
+  }
+
+  /** Recompute one reminder after something happened to it. */
+  reschedule(id: string, after: ScheduleTrigger): void {
+    if (this.shown?.id === id) this.shown = null;
+    const r = this.deps.reminders().find((x) => x.id === id);
+    if (r) this.compute(r, after);
     this.deps.changed();
   }
 
@@ -63,12 +90,12 @@ export class ReminderScheduler {
   resume(): void {
     if (this.pausedUntil === null) return;
     this.pausedUntil = null;
-    this.reschedule('resume');
+    this.sync('resume');
   }
 
-  /** A reminder started outside the schedule (Test reminder / tray). */
-  manualShown(): void {
-    this.shownAt = this.now();
+  /** A reminder started outside the schedule (Test reminder / tray): wait for its answer. */
+  manualShown(id: string): void {
+    this.shown = { id, at: this.now() };
   }
 
   tick(): void {
@@ -77,18 +104,31 @@ export class ReminderScheduler {
       if (now >= this.pausedUntil) this.resume();
       return;
     }
-    if (this.shownAt !== null) {
-      if (now - this.shownAt > RESPONSE_TIMEOUT_MS) this.reschedule('skip');
+    if (this.shown) {
+      if (now - this.shown.at > RESPONSE_TIMEOUT_MS) this.reschedule(this.shown.id, 'skip');
       return;
     }
-    if (this.nextAt === null || now < this.nextAt) return;
-    if (this.deps.isBusy()) return;
-    // Smart: hold the reminder while the computer is idle or locked; it fires
-    // as soon as the user is back (one reminder, not a backlog).
-    if (this.deps.settings().pauseWhenAway && this.deps.isUserAway()) return;
-    this.shownAt = now;
-    this.nextAt = null;
-    this.deps.fire(this.snoozed ? 'snoozed' : 'scheduled');
+    const due = this.deps
+      .reminders()
+      .filter((r) => {
+        const at = this.slots.get(r.id)?.nextAt;
+        return at != null && at <= now;
+      })
+      .sort((a, b) => typeOf(b).priority - typeOf(a).priority || this.slots.get(a.id)!.nextAt! - this.slots.get(b.id)!.nextAt!);
+    const r = due.find((x) => !this.deps.isBusy(x));
+    if (!r) return;
+    // Smart: hold reminders while the computer is idle or locked; they fire
+    // as soon as the user is back (one at a time, not a backlog).
+    if (this.deps.pauseWhenAway() && this.deps.isUserAway()) return;
+    const slot = this.slots.get(r.id)!;
+    this.shown = { id: r.id, at: now };
+    this.slots.set(r.id, { ...slot, nextAt: null });
+    this.deps.fire(r, slot.snoozed ? 'snoozed' : 'scheduled');
     this.deps.changed();
+  }
+
+  private compute(r: Reminder, after: ScheduleTrigger): void {
+    const nextAt = nextTime(r, { now: this.now(), doneToday: this.deps.doneToday(r.id), after });
+    this.slots.set(r.id, { nextAt, snoozed: after === 'later' });
   }
 }

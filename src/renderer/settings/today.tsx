@@ -16,7 +16,7 @@ export function when(t: number, now: number): string {
 /** One line describing what happens next. */
 export function scheduleLine(state: AppState, now: number): string {
   const { nextReminderAt, pausedUntil } = state.status;
-  if (!state.settings.reminders.enabled) return 'Reminders are off';
+  if (!state.settings.reminders.some((r) => r.enabled)) return 'Reminders are off';
   if (pausedUntil) return `Paused until ${when(pausedUntil, now).replace(/^at /, '')}`;
   if (nextReminderAt) return `Next reminder ${when(nextReminderAt, now)}`;
   return 'No reminder scheduled';

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WaterBottle } from './WaterBottle';
+import type { PropName } from '../../shared/reminders';
 
 /**
  * Things the companion can hold. A reminder decides what (if anything) is in
@@ -10,7 +11,7 @@ import { WaterBottle } from './WaterBottle';
  * To add a prop: build it here with its origin at the grip point, +Y up
  * (the same convention as the bottle in bottleSpec.ts).
  */
-export type PropId = 'waterBottle';
+export type PropId = PropName;
 
 export interface Prop {
   readonly id: PropId;

@@ -13,6 +13,8 @@
  * order. The host plays them, then reports `done`.
  */
 
+import type { AnswerScript } from './reminders';
+
 /** Where the character lives: the desktop overlay (walks on and off) or Android's Today screen (always there). */
 export type CompanionPlace = 'overlay' | 'home';
 
@@ -36,7 +38,7 @@ export interface CompanionState {
 export type CompanionEvent =
   | { type: 'enter'; relaxing: boolean } // Today screen shown, or a new character on it
   | { type: 'remind' }
-  | { type: 'answer'; kind: 'drank' | 'later' | 'skip' | 'timeout' }
+  | { type: 'answer'; kind: AnswerScript } // the reminder type's "done" script, or later / skip / timeout
   | { type: 'relaxOn' }
   | { type: 'relaxOff' }
   | { type: 'seated' } // the sit-down began

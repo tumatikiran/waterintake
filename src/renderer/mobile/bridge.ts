@@ -18,10 +18,11 @@ import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import type { AquaMateApi, NotificationPermission, Unsubscribe } from '../../shared/api';
-import type { AppState, CharacterInfo, ReminderContext, ReminderReason, ReminderResponse, Settings } from '../../shared/types';
-import { mergeSettings, sanitizeSettings } from '../../shared/settings';
-import { planReminders, startOfDay, type PlannedReminder, type ScheduleTrigger } from '../../shared/schedule';
-import { dayOf, sanitizeDaily, withGlass, withReminderShown } from '../../shared/daily';
+import type { AppState, CharacterInfo, Reminder, ReminderContext, ReminderReason, ReminderResponse, Settings } from '../../shared/types';
+import { mergeSettings, sanitizeSettings, withReminderPatch } from '../../shared/settings';
+import { mergePlans, planChain, startOfDay, type PlannedReminder, type ScheduleTrigger } from '../../shared/schedule';
+import { dayOf, entryOf, sanitizeDaily, shownToday, withDone, withShown } from '../../shared/daily';
+import { REMINDER_TYPES, WATER_ID, nextTime, typeOf, waterReminder } from '../../shared/reminders';
 import {
   BUILTIN_CHARACTER,
   BUILTIN_CHARACTERS,
@@ -58,16 +59,31 @@ class Channel<T> {
   }
 }
 
-interface ScheduleState {
+/** Each reminder's next time (what the notifications were planned from). */
+interface Slot {
   nextAt: number | null;
   snoozed: boolean;
+}
+interface ScheduleState {
+  slots: Record<string, Slot>;
   pausedUntil: number | null;
 }
 function sanitizeSchedule(v: unknown): ScheduleState {
   const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const time = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
-  return { nextAt: time(r.nextAt), snoozed: r.snoozed === true, pausedUntil: time(r.pausedUntil) };
+  const slot = (x: unknown): Slot => {
+    const o = (typeof x === 'object' && x !== null ? x : {}) as Record<string, unknown>;
+    return { nextAt: time(o.nextAt), snoozed: o.snoozed === true };
+  };
+  const slots: Record<string, Slot> = {};
+  if (typeof r.slots === 'object' && r.slots !== null) for (const [id, x] of Object.entries(r.slots)) slots[id] = slot(x);
+  else if ('nextAt' in r) slots[WATER_ID] = slot(r); // version 1: water only
+  return { slots, pausedUntil: time(r.pausedUntil) };
 }
+
+/** A planned notification and the reminder it's for. */
+type Planned = PlannedReminder & { reminderId: string };
+const toDone = (actionId: string) => (actionId === 'done' || actionId === 'drank' ? 'done' : actionId === 'later' ? 'later' : undefined);
 
 async function readPref<T>(key: string, sanitize: (raw: unknown) => T): Promise<T> {
   try {
@@ -152,6 +168,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
   // ----------------------------------------------------------------- state
   let permission: NotificationPermission = await checkPermission();
   let reminderActive = false;
+  let activeReminder: Reminder | null = null;
   let relaxing = false; // Relax mode on the Today screen (not saved: it ends when the app closes)
   let relaxTimer: number | undefined; // "Relax for": ends Relax mode by itself
   const stateChannel = new Channel<AppState>();
@@ -162,8 +179,11 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     return {
       settings,
       status: {
-        glassesToday: dayOf(daily).glasses,
-        nextReminderAt: schedule.nextAt,
+        glassesToday: entryOf(daily, WATER_ID).done,
+        reminders: Object.fromEntries(
+          settings.reminders.map((r) => [r.id, { nextAt: schedule.slots[r.id]?.nextAt ?? null, ...entryOf(daily, r.id) }]),
+        ),
+        nextReminderAt,
         pausedUntil: schedule.pausedUntil,
         reminderActive,
         relaxing,
@@ -180,6 +200,7 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     };
   }
   const push = () => stateChannel.emit(appState());
+  let nextReminderAt: number | null = null; // the first planned notification
 
   // --------------------------------------------------------- notifications
   async function checkPermission(): Promise<NotificationPermission> {
@@ -206,105 +227,132 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
         {
           id: ACTION_TYPE,
           actions: [
-            { id: 'drank', title: 'I drank water' },
-            { id: 'later', title: 'Drink later' },
+            { id: 'done', title: REMINDER_TYPES.water.labels.notifyDone },
+            { id: 'later', title: REMINDER_TYPES.water.labels.notifyLater },
           ],
         },
       ],
     }).catch(() => {});
   }
 
-  function notificationText(snoozed: boolean): string {
-    const name = settings.userName ? ` ${settings.userName}` : '';
-    return snoozed ? `Ready now${name ? `,${name}` : ''}? Time to drink some water 💧` : `Hey${name}! Time to drink some water 💧`;
-  }
-
   /** Replaces the scheduled notifications with the given plan. */
-  async function syncNotifications(plan: PlannedReminder[]): Promise<void> {
+  async function syncNotifications(plan: Planned[]): Promise<void> {
     if (permission !== 'granted') return;
     try {
       const ids = Array.from({ length: REMINDER_IDS.count }, (_, i) => ({ id: REMINDER_IDS.first + i }));
       await LocalNotifications.cancel({ notifications: ids });
       if (!plan.length) return;
       await LocalNotifications.schedule({
-        notifications: plan.map((p, i) => ({
-          id: REMINDER_IDS.first + i,
-          title: 'AquaMate',
-          body: notificationText(p.snoozed),
-          // Inexact but battery-friendly: Android may deliver a few minutes late.
-          schedule: { at: new Date(p.at), allowWhileIdle: true },
-          channelId: CHANNEL_ID,
-          actionTypeId: ACTION_TYPE,
-          smallIcon: 'ic_stat_aquamate',
-          iconColor: '#2F80ED',
-          autoCancel: true,
-          extra: { kind: 'reminder', snoozed: p.snoozed },
-        })),
+        notifications: plan.map((p, i) => {
+          const r = settings.reminders.find((x) => x.id === p.reminderId) ?? waterReminder(settings.reminders);
+          const { title, body } = typeOf(r).notification(r, { userName: settings.userName, snoozed: p.snoozed });
+          return {
+            id: REMINDER_IDS.first + i,
+            title,
+            body,
+            // Inexact but battery-friendly: Android may deliver a few minutes late.
+            schedule: { at: new Date(p.at), allowWhileIdle: true },
+            channelId: CHANNEL_ID,
+            actionTypeId: ACTION_TYPE,
+            smallIcon: 'ic_stat_aquamate',
+            iconColor: '#2F80ED',
+            autoCancel: true,
+            extra: { kind: 'reminder', reminderId: r.id, snoozed: p.snoozed },
+          };
+        }),
       });
     } catch (err) {
       console.warn('[AquaMate] Could not schedule reminders:', err);
     }
   }
 
-  async function apply(plan: PlannedReminder[]): Promise<void> {
-    schedule = { ...schedule, nextAt: plan[0]?.at ?? null, snoozed: plan[0]?.snoozed ?? false };
+  const doneToday = (id: string, now = Date.now()) => entryOf(daily, id, now).done;
+
+  /**
+   * The next notifications across every reminder: each one's next time, then
+   * its following ones, merged in time order. While paused, everything starts
+   * when the pause ends.
+   */
+  function planAll(now = Date.now()): Planned[] {
+    const paused = schedule.pausedUntil !== null && schedule.pausedUntil > now;
+    const plans = settings.reminders.map((r): Planned[] => {
+      const next = (input: { now: number; doneToday: number; after: ScheduleTrigger }) => nextTime(r, input);
+      const tag = (p: PlannedReminder): Planned => ({ ...p, reminderId: r.id });
+      if (paused) {
+        return planChain(next, { now, doneToday: doneToday(r.id, now), after: 'start', count: REMINDER_IDS.count, pausedUntil: schedule.pausedUntil }).map(tag);
+      }
+      const first = schedule.slots[r.id];
+      if (!first || first.nextAt === null) return [];
+      const at = first.nextAt;
+      const rest = planChain(next, {
+        now: at,
+        doneToday: startOfDay(at) > startOfDay(now) ? 0 : doneToday(r.id, now),
+        after: 'skip',
+        count: REMINDER_IDS.count - 1,
+      });
+      return [{ at, snoozed: first.snoozed }, ...rest].map(tag);
+    });
+    return mergePlans(plans, REMINDER_IDS.count);
+  }
+
+  async function apply(): Promise<void> {
+    const plan = planAll();
+    nextReminderAt = plan[0]?.at ?? null;
     await writePref('schedule', schedule);
     await syncNotifications(plan);
     push();
   }
 
-  async function reschedule(after: ScheduleTrigger): Promise<void> {
-    if (schedule.pausedUntil !== null && schedule.pausedUntil <= Date.now()) schedule = { ...schedule, pausedUntil: null };
-    const plan = planReminders({
-      settings: settings.reminders,
-      now: Date.now(),
-      glassesToday: dayOf(daily).glasses,
-      after,
-      count: REMINDER_IDS.count,
-      pausedUntil: schedule.pausedUntil,
-    });
-    await apply(plan);
+  function slotFor(r: Reminder, after: ScheduleTrigger, now = Date.now()): Slot {
+    return { nextAt: nextTime(r, { now, doneToday: doneToday(r.id, now), after }), snoozed: after === 'later' };
   }
 
-  /** On launch / return to the app: keep the upcoming reminder, re-plan the rest. */
+  /** Recompute one reminder (or all of them) after something happened, then re-plan the notifications. */
+  async function reschedule(after: ScheduleTrigger, id?: string): Promise<void> {
+    if (schedule.pausedUntil !== null && schedule.pausedUntil <= Date.now()) schedule = { ...schedule, pausedUntil: null };
+    const slots: Record<string, Slot> = {};
+    for (const r of settings.reminders) slots[r.id] = id === undefined || r.id === id ? slotFor(r, after) : (schedule.slots[r.id] ?? slotFor(r, 'start'));
+    schedule = { ...schedule, slots };
+    await apply();
+  }
+
+  /** On launch / return to the app: keep each upcoming reminder, re-plan the rest. */
   async function refreshPlan(): Promise<void> {
     const now = Date.now();
     daily = dayOf(daily, now);
     if (schedule.pausedUntil !== null && schedule.pausedUntil <= now) schedule = { ...schedule, pausedUntil: null };
-    if (schedule.nextAt !== null && schedule.nextAt > now && schedule.pausedUntil === null && settings.reminders.enabled) {
-      const rest = planReminders({
-        settings: settings.reminders,
-        now: schedule.nextAt,
-        glassesToday: startOfDay(schedule.nextAt) > startOfDay(now) ? 0 : daily.glasses,
-        after: 'skip',
-        count: REMINDER_IDS.count - 1,
-      });
-      await apply([{ at: schedule.nextAt, snoozed: schedule.snoozed }, ...rest]);
-    } else {
-      await reschedule('start');
+    const slots: Record<string, Slot> = {};
+    for (const r of settings.reminders) {
+      const kept = schedule.slots[r.id];
+      slots[r.id] = kept && kept.nextAt !== null && kept.nextAt > now && r.enabled ? kept : slotFor(r, 'start', now);
     }
+    schedule = { ...schedule, slots };
+    await apply();
   }
 
   // ---------------------------------------------------------- reminder scene
-  function startReminder(reason: ReminderReason, answer?: 'drank' | 'later'): void {
+  /** The reminder a notification is for (older notifications didn't say: water). */
+  const reminderFor = (id: unknown) => settings.reminders.find((r) => r.id === id) ?? waterReminder(settings.reminders);
+
+  function startReminder(r: Reminder, reason: ReminderReason, answer?: 'done' | 'later'): void {
     if (reminderActive) return;
     reminderActive = true;
+    activeReminder = r;
     const character = allCharacters().find((c) => c.id === settings.characterId) ?? BUILTIN_CHARACTER;
-    const today = dayOf(daily);
     const ctx: ReminderContext = {
       reason,
+      reminder: { id: r.id, type: r.type, name: r.name },
       userName: settings.userName,
-      glassesToday: today.glasses,
-      dailyGoal: settings.reminders.dailyGoal,
-      snoozeMinutes: settings.reminders.snoozeMinutes,
-      exitPath: settings.reminders.exitPath,
-      exitGait: settings.reminders.exitGait,
+      progress: typeOf(r).progress(r, doneToday(r.id)),
+      snoozeMinutes: r.snoozeMinutes,
+      exitPath: settings.general.exitPath,
+      exitGait: settings.general.exitGait,
       character: { id: character.id, revision: character.revision },
-      firstOfDay: today.reminders === 0,
+      firstOfDay: shownToday(daily) === 0,
       hour: new Date().getHours(),
       answer,
     };
-    daily = withReminderShown(daily);
+    daily = withShown(daily, r.id);
     void writePref('today', daily);
     visibleChannel.emit(true);
     startChannel.emit(ctx);
@@ -312,16 +360,16 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
   }
 
   void LocalNotifications.addListener('localNotificationActionPerformed', ({ actionId, notification }) => {
-    const extra = (notification.extra ?? {}) as { kind?: string; snoozed?: boolean };
+    const extra = (notification.extra ?? {}) as { kind?: string; snoozed?: boolean; reminderId?: string };
     if (extra.kind !== 'reminder') return;
     void LocalNotifications.removeAllDeliveredNotifications().catch(() => {});
     const reason: ReminderReason = extra.snoozed ? 'snoozed' : 'scheduled';
-    startReminder(reason, actionId === 'drank' || actionId === 'later' ? actionId : undefined);
+    startReminder(reminderFor(extra.reminderId), reason, toDone(actionId));
   });
   // A reminder that comes due while the app is open plays right away, like on desktop.
   void LocalNotifications.addListener('localNotificationReceived', (notification) => {
-    const extra = (notification.extra ?? {}) as { kind?: string; snoozed?: boolean };
-    if (extra.kind === 'reminder' && document.visibilityState === 'visible') startReminder(extra.snoozed ? 'snoozed' : 'scheduled');
+    const extra = (notification.extra ?? {}) as { kind?: string; snoozed?: boolean; reminderId?: string };
+    if (extra.kind === 'reminder' && document.visibilityState === 'visible') startReminder(reminderFor(extra.reminderId), extra.snoozed ? 'snoozed' : 'scheduled');
   });
   void App.addListener('resume', async () => {
     permission = await checkPermission();
@@ -349,7 +397,13 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       await reschedule('settings');
       return settings;
     },
-    testReminder: () => startReminder('manual'),
+    async updateReminder(id, patch) {
+      settings = withReminderPatch(settings, id, patch);
+      await writePref('settings', settings);
+      await reschedule('settings', id);
+      return settings;
+    },
+    testReminder: (id) => startReminder(reminderFor(id), 'manual'),
     setRelax(on) {
       if (relaxing === on) return;
       relaxing = on;
@@ -359,11 +413,11 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
       push();
     },
     async logGlass() {
-      daily = withGlass(daily);
+      daily = withDone(daily, WATER_ID);
       await writePref('today', daily);
       void vibrate();
-      await reschedule('drank');
-      return daily.glasses;
+      await reschedule('done', WATER_ID);
+      return doneToday(WATER_ID);
     },
     pause(minutes) {
       const until =
@@ -453,17 +507,19 @@ export async function createMobileBridge(): Promise<AquaMateApi> {
     mascotReady: () => {},
     setHitRegion: () => {},
     onPointer: () => () => {},
-    async respond(kind: ReminderResponse) {
-      if (kind === 'drank') {
-        daily = withGlass(daily);
+    async respond(raw: ReminderResponse | 'drank') {
+      const kind = raw === 'drank' ? 'done' : raw;
+      const r = reminderFor(activeReminder?.id);
+      if (kind === 'done') {
+        daily = withDone(daily, r.id);
         await writePref('today', daily);
         void vibrate();
       }
-      await reschedule(kind === 'drank' ? 'drank' : kind === 'skip' ? 'skip' : 'later');
+      await reschedule(kind === 'done' ? 'done' : kind === 'skip' ? 'skip' : 'later', r.id);
       void LocalNotifications.removeAllDeliveredNotifications().catch(() => {});
-      const glassesToday = dayOf(daily).glasses;
-      const { dailyGoal, snoozeMinutes, exitPath, exitGait } = settings.reminders;
-      return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes, exitPath, exitGait };
+      const progress = typeOf(r).progress(r, doneToday(r.id));
+      const { exitPath, exitGait } = settings.general;
+      return { progress, goalReached: !!progress && progress.done >= progress.goal, snoozeMinutes: r.snoozeMinutes, exitPath, exitGait };
     },
     mascotDone() {
       reminderActive = false;

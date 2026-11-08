@@ -8,19 +8,23 @@ import { Director, type Actor } from '../behavior/Director';
 import { renderMessage, type CardMessage, type MessageContext } from '../behavior/messages';
 import { companionStep, IDLE, isRelaxing, type CompanionEvent, type CompanionMode, type CompanionState } from '../../shared/companion';
 import { Zzz } from '../Zzz';
+import { waterReminder } from '../../shared/reminders';
 
 const HOME_STAGE: StageLayout = { stop: 'center', groundPx: 16, zoom: 140 };
 const noop = () => {};
 
+/** The Today screen talks about water (logging a glass, the day's progress). */
 function homeContext(state: AppState): MessageContext {
-  const done = state.status.glassesToday;
-  const { dailyGoal, snoozeMinutes, exitPath, exitGait } = state.settings.reminders;
+  const water = waterReminder(state.settings.reminders);
+  const progress = { done: state.status.glassesToday, goal: water.dailyGoal };
+  const { exitPath, exitGait } = state.settings.general;
+  const { snoozeMinutes } = water;
   return {
     reminder: {
       reason: 'manual',
+      reminder: { id: water.id, type: water.type, name: water.name },
       userName: state.settings.userName,
-      glassesToday: done,
-      dailyGoal,
+      progress,
       snoozeMinutes,
       exitPath,
       exitGait,
@@ -28,7 +32,7 @@ function homeContext(state: AppState): MessageContext {
       firstOfDay: false,
       hour: new Date().getHours(),
     },
-    result: { glassesToday: done, dailyGoal, goalReached: done >= dailyGoal, snoozeMinutes, exitPath, exitGait },
+    result: { progress, goalReached: progress.done >= progress.goal, snoozeMinutes, exitPath, exitGait },
   };
 }
 
@@ -142,7 +146,7 @@ export function HomeStage({ state, paused, cheers, onWake }: HomeStageProps) {
         </Suspense>
       </Canvas>
       <Zzz />
-      <ReminderCard variant="bubble" message={bubble} actions={false} onDrank={noop} onLater={noop} onSkip={noop} />
+      <ReminderCard variant="bubble" message={bubble} actions={false} onDone={noop} onLater={noop} onSkip={noop} />
     </div>
   );
 }

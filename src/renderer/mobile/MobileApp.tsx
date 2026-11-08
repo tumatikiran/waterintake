@@ -6,6 +6,7 @@ import { RemindersPanel } from '../settings/RemindersPanel';
 import { CharacterPanel } from '../settings/CharacterPanel';
 import { AboutPanel, ProgressRing, scheduleLine, useNow } from '../settings/today';
 import { HomeStage } from './HomeStage';
+import { waterReminder } from '../../shared/reminders';
 
 type Tab = 'today' | 'reminders' | 'character' | 'about';
 
@@ -53,7 +54,8 @@ function TodayScreen({ state, paused }: { state: AppState; paused: boolean }) {
   const now = useNow();
   const [cheers, setCheers] = useState(0);
   const { glassesToday: done, pausedUntil, reminderActive, relaxing } = state.status;
-  const { dailyGoal: goal, enabled } = state.settings.reminders;
+  const goal = waterReminder(state.settings.reminders).dailyGoal;
+  const enabled = state.settings.reminders.some((r) => r.enabled);
   const permission = state.app.notifications ?? 'prompt';
 
   return (

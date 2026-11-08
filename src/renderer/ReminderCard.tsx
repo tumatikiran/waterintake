@@ -7,7 +7,9 @@ interface ReminderCardProps {
   variant?: 'dialog' | 'bubble';
   message: CardMessage | null;
   actions: boolean;
-  onDrank: () => void;
+  /** Button wording, from the reminder's type ("I Drank Water" / "Drink Later"). */
+  labels?: { done: string; later: string };
+  onDone: () => void;
   onLater: () => void;
   onSkip: () => void;
 }
@@ -40,7 +42,7 @@ function Progress({ done, goal }: { done: number; goal: number }) {
   );
 }
 
-export function ReminderCard({ ref, variant = 'dialog', message, actions, onDrank, onLater, onSkip }: ReminderCardProps) {
+export function ReminderCard({ ref, variant = 'dialog', message, actions, labels, onDone, onLater, onSkip }: ReminderCardProps) {
   const visible = message !== null;
   return (
     <div
@@ -64,11 +66,11 @@ export function ReminderCard({ ref, variant = 'dialog', message, actions, onDran
           {message.progress && <Progress {...message.progress} />}
           {actions && (
             <div className="reminder-actions">
-              <button type="button" className="btn btn-primary" onClick={onDrank}>
-                I Drank Water
+              <button type="button" className="btn btn-primary" onClick={onDone}>
+                {labels?.done ?? 'Done'}
               </button>
               <button type="button" className="btn btn-ghost" onClick={onLater}>
-                Drink Later
+                {labels?.later ?? 'Later'}
               </button>
             </div>
           )}

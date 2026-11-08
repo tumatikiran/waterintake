@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AppState } from '../../shared/types';
 import { RemindersPanel } from './RemindersPanel';
+import { waterReminder } from '../../shared/reminders';
 import { CharacterPanel } from './CharacterPanel';
 import { AboutPanel, ProgressRing, scheduleLine, useNow } from './today';
 
@@ -14,7 +15,8 @@ const TABS: { id: Tab; label: string }[] = [
 function Today({ state }: { state: AppState }) {
   const now = useNow();
   const { glassesToday: done, pausedUntil, reminderActive, relaxing } = state.status;
-  const { enabled, dailyGoal: goal } = state.settings.reminders;
+  const goal = waterReminder(state.settings.reminders).dailyGoal;
+  const enabled = state.settings.reminders.some((r) => r.enabled);
   const schedule = scheduleLine(state, now);
 
   return (

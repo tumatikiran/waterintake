@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { dayOf, sanitizeDaily, withGlass, withReminderShown, type DailyData } from '../shared/daily';
+import { entryOf, sanitizeDaily, shownToday, withDone, withShown, type DailyData, type DayEntry } from '../shared/daily';
 
 /** A small JSON file with atomic writes and validation on read. */
 export class JsonFile<T> {
@@ -34,9 +34,7 @@ export class JsonFile<T> {
   }
 }
 
-/**
- * Today's glass count only (no history): it resets at local midnight.
- */
+/** Today's log per reminder (no history): it resets at local midnight. */
 export class DailyLog {
   private data: DailyData;
   private readonly file: JsonFile<DailyData>;
@@ -46,22 +44,28 @@ export class DailyLog {
     this.data = this.file.read();
   }
 
-  glassesToday(now = Date.now()): number {
-    return dayOf(this.data, now).glasses;
+  entry(id: string, now = Date.now()): DayEntry {
+    return entryOf(this.data, id, now);
   }
 
+  doneToday(id: string, now = Date.now()): number {
+    return this.entry(id, now).done;
+  }
+
+  /** Reminders of any kind shown today. */
   remindersToday(now = Date.now()): number {
-    return dayOf(this.data, now).reminders;
+    return shownToday(this.data, now);
   }
 
-  addGlass(now = Date.now()): number {
-    this.data = withGlass(this.data, now);
+  /** It was done (a glass drunk, a dose taken); returns today's count. */
+  done(id: string, now = Date.now()): number {
+    this.data = withDone(this.data, id, now);
     this.file.write(this.data);
-    return this.data.glasses;
+    return this.doneToday(id, now);
   }
 
-  reminderShown(now = Date.now()): void {
-    this.data = withReminderShown(this.data, now);
+  shown(id: string, now = Date.now()): void {
+    this.data = withShown(this.data, id, now);
     this.file.write(this.data);
   }
 }

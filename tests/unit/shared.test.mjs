@@ -43,16 +43,27 @@ test('records: upload names, created revisions, patches', () => {
   assert.equal(C.patchRecord(first, { name: '' }).name, 'Mia', 'empty names keep the old one');
 });
 
-test('daily count resets at midnight', () => {
+test("today's log is per reminder and resets at midnight", () => {
   const day1 = new Date(2026, 10, 6, 23, 50).getTime();
   const day2 = new Date(2026, 10, 7, 0, 5).getTime();
   let d = D.sanitizeDaily(null);
-  d = D.withGlass(d, day1);
-  d = D.withGlass(d, day1);
-  d = D.withReminderShown(d, day1);
-  assert.deepEqual(D.dayOf(d, day1), { date: '2026-11-06', glasses: 2, reminders: 1 });
-  assert.deepEqual(D.dayOf(d, day2), { date: '2026-11-07', glasses: 0, reminders: 0 });
-  assert.equal(D.withGlass(d, day2).glasses, 1);
+  d = D.withDone(d, 'water', day1);
+  d = D.withDone(d, 'water', day1);
+  d = D.withShown(d, 'water', day1);
+  d = D.withShown(d, 'vit-d', day1);
+  assert.deepEqual(D.entryOf(d, 'water', day1), { done: 2, shown: 1, times: [day1, day1] });
+  assert.equal(D.shownToday(d, day1), 2, 'all kinds count towards "first of the day"');
+  assert.deepEqual(D.entryOf(d, 'water', day2), { done: 0, shown: 0, times: [] });
+  assert.equal(D.shownToday(d, day2), 0);
+  assert.equal(D.entryOf(D.withDone(d, 'water', day2), 'water', day2).done, 1);
+});
+
+test("version 1's daily file (glasses only) becomes the water reminder's entry", () => {
+  const d = D.sanitizeDaily({ date: '2026-11-06', glasses: 5, reminders: 3 });
+  assert.deepEqual(d, { date: '2026-11-06', entries: { water: { done: 5, shown: 3, times: [] } } });
+  assert.deepEqual(D.sanitizeDaily({ date: 'x', entries: { '../bad': { done: 1 }, ok: { done: -2, shown: 'a', times: [1, 'b'] } } }).entries, {
+    ok: { done: 0, shown: 0, times: [1] },
+  });
 });
 
 test('body type: male or female, older recipes stay male, two built-in companions', () => {

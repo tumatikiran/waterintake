@@ -10,10 +10,12 @@ import type {
   ReminderReason,
   ReminderResponse,
   ResponseResult,
+  Reminder,
   SaveCreatedInput,
   Settings,
 } from '../shared/types';
-import { mergeSettings, sanitizeSettings } from '../shared/settings';
+import { mergeSettings, sanitizeSettings, withReminderPatch, type SettingsPatch } from '../shared/settings';
+import { WATER_ID, typeOf, waterReminder } from '../shared/reminders';
 import { startOfDay } from '../shared/schedule';
 import { WindowManager, type View } from './window-manager';
 import { DailyLog, JsonFile } from './stores';
@@ -71,7 +73,10 @@ function toHitRegion(value: unknown): HitRegion | null {
   return { x: x as number, y: y as number, width: Math.max(0, width as number), height: Math.max(0, height as number) };
 }
 
-const RESPONSES: ReminderResponse[] = ['drank', 'later', 'skip', 'timeout'];
+const RESPONSES: ReminderResponse[] = ['done', 'later', 'skip', 'timeout'];
+/** 'drank' is what older builds (and Android notification buttons) called "done". */
+const toResponse = (kind: unknown): ReminderResponse | null =>
+  kind === 'drank' ? 'done' : RESPONSES.includes(kind as ReminderResponse) ? (kind as ReminderResponse) : null;
 
 function main(): void {
   const dataDir = app.getPath('userData');
@@ -100,20 +105,24 @@ function main(): void {
   });
 
   const scheduler = new ReminderScheduler({
-    settings: () => settings.reminders,
-    glassesToday: () => log.glassesToday(),
+    reminders: () => settings.reminders,
+    doneToday: (id) => log.doneToday(id),
+    pauseWhenAway: () => settings.general.pauseWhenAway,
     isUserAway: () => {
       const state = powerMonitor.getSystemIdleState(IDLE_THRESHOLD_S);
       return state === 'idle' || state === 'locked';
     },
-    // Scheduled (water) reminders wait while you relax; "Remind me now" still wakes the companion.
-    isBusy: () => windows.busy || windows.relaxing,
-    fire: (reason) => startReminder(reason),
+    // Some types wait while you relax (water), others wake the companion; "Remind me now" always does.
+    isBusy: (r) => windows.busy || (windows.relaxing && typeOf(r).duringRelax === 'wait'),
+    fire: (r, reason) => startReminder(r, reason),
     changed: () => pushState(),
   });
+  /** The reminder on screen (its answer is logged against it). */
+  let activeReminder: Reminder | null = null;
+  const water = () => waterReminder(settings.reminders);
 
   const tray = new AppTray(path.join(APP_ROOT, 'assets', 'tray'), {
-    remindNow: () => startReminder('manual'),
+    remindNow: () => startReminder(water(), 'manual'),
     logGlass: () => logGlass(),
     setRelax: (on) => setRelax(on),
     pause: (minutes) => pause(minutes),
@@ -126,7 +135,10 @@ function main(): void {
     return {
       settings,
       status: {
-        glassesToday: log.glassesToday(),
+        glassesToday: log.doneToday(WATER_ID),
+        reminders: Object.fromEntries(
+          settings.reminders.map((r) => [r.id, { nextAt: scheduler.nextFor(r.id), ...log.entry(r.id) }]),
+        ),
         nextReminderAt: scheduler.nextAt,
         pausedUntil: scheduler.pausedUntil,
         reminderActive: windows.reminderActive,
@@ -141,9 +153,9 @@ function main(): void {
     const state = appState();
     windows.sendToSettings('state', state);
     tray.update({
-      enabled: settings.reminders.enabled,
+      enabled: settings.reminders.some((r) => r.enabled),
       glassesToday: state.status.glassesToday,
-      dailyGoal: settings.reminders.dailyGoal,
+      dailyGoal: water().dailyGoal,
       nextReminderAt: state.status.nextReminderAt,
       pausedUntil: state.status.pausedUntil,
       relaxing: state.status.relaxing,
@@ -152,31 +164,32 @@ function main(): void {
   }
 
   /** Everything the overlay needs to know about the companion and the user right now. */
-  function sceneContext(reason: ReminderReason): ReminderContext {
+  function sceneContext(reason: ReminderReason, r: Reminder): ReminderContext {
     const character = characters.get(settings.characterId) ?? BUILTIN_CHARACTER;
     return {
       reason,
+      reminder: { id: r.id, type: r.type, name: r.name },
       userName: settings.userName,
-      glassesToday: log.glassesToday(),
-      dailyGoal: settings.reminders.dailyGoal,
-      snoozeMinutes: settings.reminders.snoozeMinutes,
-      exitPath: settings.reminders.exitPath,
-      exitGait: settings.reminders.exitGait,
+      progress: typeOf(r).progress(r, log.doneToday(r.id)),
+      snoozeMinutes: r.snoozeMinutes,
+      exitPath: settings.general.exitPath,
+      exitGait: settings.general.exitGait,
       character: { id: character.id, revision: character.revision },
       firstOfDay: log.remindersToday() === 0,
       hour: new Date().getHours(),
     };
   }
 
-  function startReminder(reason: ReminderReason): void {
+  function startReminder(r: Reminder, reason: ReminderReason): void {
     if (windows.busy) return;
-    if (!windows.startReminder(sceneContext(reason))) return;
+    if (!windows.startReminder(sceneContext(reason, r))) return;
     clearTimeout(relaxTimer); // a reminder ends Relax mode
-    log.reminderShown();
-    if (reason === 'manual') scheduler.manualShown();
-    if (reason !== 'manual' && settings.reminders.systemNotification && Notification.isSupported()) {
-      const name = settings.userName ? ` ${settings.userName}` : '';
-      new Notification({ title: 'AquaMate 💧', body: `Hey${name}! Time to drink some water.` }).show();
+    activeReminder = r;
+    log.shown(r.id);
+    if (reason === 'manual') scheduler.manualShown(r.id);
+    if (reason !== 'manual' && settings.general.systemNotification && Notification.isSupported()) {
+      const { title, body } = typeOf(r).notification(r, { userName: settings.userName, snoozed: reason === 'snoozed' });
+      new Notification({ title, body }).show();
     }
     pushState();
   }
@@ -186,13 +199,14 @@ function main(): void {
   function setRelax(on: boolean): void {
     clearTimeout(relaxTimer);
     const { dozeAfterMinutes, durationMinutes } = settings.relax;
-    if (on ? windows.startRelax({ ...sceneContext('manual'), dozeAfterMinutes }) : windows.stopRelax()) pushState();
+    if (on ? windows.startRelax({ ...sceneContext('manual', water()), dozeAfterMinutes }) : windows.stopRelax()) pushState();
     if (on && windows.relaxing && durationMinutes > 0) relaxTimer = setTimeout(() => setRelax(false), durationMinutes * 60_000);
   }
 
+  /** A glass logged without a reminder (tray, "+ 1 glass"). */
   function logGlass(): number {
-    const count = log.addGlass();
-    scheduler.reschedule('drank');
+    const count = log.done(WATER_ID);
+    scheduler.reschedule(WATER_ID, 'done');
     return count;
   }
 
@@ -214,15 +228,24 @@ function main(): void {
     if (!fromSettings(e)) throw new Error('Not allowed');
     return appState();
   });
-  ipcMain.handle('settings:update', (e, patch: DeepPartial<Settings>) => {
+  ipcMain.handle('settings:update', (e, patch: SettingsPatch) => {
     if (!fromSettings(e)) throw new Error('Not allowed');
     const next = mergeSettings(settings, patch);
     if (!characters.get(next.characterId)) next.characterId = settings.characterId;
     saveSettings(next);
-    scheduler.reschedule('settings');
+    scheduler.sync('settings');
     return settings;
   });
-  ipcMain.on('reminder:test', (e) => fromSettings(e) && startReminder('manual'));
+  ipcMain.handle('reminders:update', (e, id: unknown, patch: unknown) => {
+    if (!fromSettings(e) || typeof id !== 'string' || typeof patch !== 'object' || patch === null) throw new Error('Not allowed');
+    saveSettings(withReminderPatch(settings, id, patch as Record<string, unknown>));
+    scheduler.reschedule(id, 'settings');
+    return settings;
+  });
+  ipcMain.on('reminder:test', (e, id: unknown) => {
+    if (!fromSettings(e)) return;
+    startReminder(settings.reminders.find((r) => r.id === id) ?? water(), 'manual');
+  });
   ipcMain.handle('glass:log', (e) => {
     if (!fromSettings(e)) throw new Error('Not allowed');
     return logGlass();
@@ -288,12 +311,16 @@ function main(): void {
     windows.hideMascot();
     pushState();
   });
-  ipcMain.handle('reminder:respond', (e, kind: unknown): ResponseResult => {
-    if (!fromMascot(e) || !RESPONSES.includes(kind as ReminderResponse)) throw new Error('Not allowed');
-    const glassesToday = kind === 'drank' ? log.addGlass() : log.glassesToday();
-    scheduler.reschedule(kind === 'drank' ? 'drank' : kind === 'skip' ? 'skip' : 'later');
-    const { dailyGoal, snoozeMinutes, exitPath, exitGait } = settings.reminders;
-    return { glassesToday, dailyGoal, goalReached: glassesToday >= dailyGoal, snoozeMinutes, exitPath, exitGait };
+  ipcMain.handle('reminder:respond', (e, raw: unknown): ResponseResult => {
+    const kind = toResponse(raw);
+    if (!fromMascot(e) || !kind) throw new Error('Not allowed');
+    // The reminder on screen, as currently configured.
+    const r = settings.reminders.find((x) => x.id === activeReminder?.id) ?? activeReminder ?? water();
+    const done = kind === 'done' ? log.done(r.id) : log.doneToday(r.id);
+    scheduler.reschedule(r.id, kind === 'done' ? 'done' : kind === 'skip' ? 'skip' : 'later');
+    const progress = typeOf(r).progress(r, done);
+    const { exitPath, exitGait } = settings.general;
+    return { progress, goalReached: !!progress && progress.done >= progress.goal, snoozeMinutes: r.snoozeMinutes, exitPath, exitGait };
   });
 
   // ------------------------------------------------------------- lifecycle

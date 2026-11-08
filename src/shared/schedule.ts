@@ -2,7 +2,10 @@
  * Pure scheduling logic (no timers, no Electron), so it can be unit-tested.
  * All times are epoch milliseconds interpreted in the machine's local time zone.
  */
-import type { ReminderSettings, TimeWindow } from './types';
+import type { TimeWindow, WaterReminder } from './types';
+
+/** What interval scheduling needs from a reminder (water's settings). */
+export type IntervalSchedule = Pick<WaterReminder, 'enabled' | 'mode' | 'intervalMinutes' | 'dailyGoal' | 'stopWhenGoalReached' | 'snoozeMinutes' | 'schedule'>;
 
 export const MINUTE = 60_000;
 const DAY_MS = 24 * 60 * MINUTE;
@@ -92,23 +95,23 @@ export function remainingActiveMinutesToday(schedule: TimeWindow[], t: number): 
  * Minutes until the next reminder, or 'goal-reached' when the daily goal is met
  * and the user asked to stop for the day.
  */
-export function reminderInterval(r: ReminderSettings, glassesToday: number, t: number): number | 'goal-reached' {
-  const goalMet = glassesToday >= r.dailyGoal;
+export function reminderInterval(r: IntervalSchedule, doneToday: number, t: number): number | 'goal-reached' {
+  const goalMet = doneToday >= r.dailyGoal;
   if (goalMet && r.stopWhenGoalReached) return 'goal-reached';
   if (r.mode === 'fixed' || goalMet) return r.intervalMinutes;
-  const left = r.dailyGoal - glassesToday;
+  const left = r.dailyGoal - doneToday;
   const minutes = remainingActiveMinutesToday(r.schedule, t) / left;
   const [min, max] = GOAL_INTERVAL_BOUNDS;
   return Math.round(Math.min(max, Math.max(min, minutes)));
 }
 
 /** What just happened, which decides how far away the next reminder is. */
-export type ScheduleTrigger = 'start' | 'settings' | 'drank' | 'skip' | 'later' | 'resume';
+export type ScheduleTrigger = 'start' | 'settings' | 'done' | 'skip' | 'later' | 'resume';
 
 export interface NextReminderInput {
-  settings: ReminderSettings;
+  reminder: IntervalSchedule;
   now: number;
-  glassesToday: number;
+  doneToday: number;
   after: ScheduleTrigger;
 }
 
@@ -117,6 +120,9 @@ export interface PlannedReminder {
   snoozed: boolean;
 }
 
+/** One reminder's next time, given what just happened (see shared/reminders.ts for each type's rule). */
+export type NextTime = (input: { now: number; doneToday: number; after: ScheduleTrigger }) => number | null;
+
 /**
  * The next `count` reminders, assuming no glass is logged in between. Used on
  * Android, where reminders are scheduled ahead of time as notifications; the
@@ -124,14 +130,23 @@ export interface PlannedReminder {
  * change). While paused, the plan starts when the pause ends.
  */
 export function planReminders(input: NextReminderInput & { count: number; pausedUntil?: number | null }): PlannedReminder[] {
+  const next: NextTime = ({ now, doneToday, after }) => nextReminderTime({ reminder: input.reminder, now, doneToday, after });
+  return planChain(next, input);
+}
+
+/** A reminder's next `count` times from `now` (after `after`), assuming nothing is done in between. */
+export function planChain(
+  next: NextTime,
+  input: { now: number; doneToday: number; after: ScheduleTrigger; count: number; pausedUntil?: number | null },
+): PlannedReminder[] {
   const paused = input.pausedUntil != null && input.pausedUntil > input.now;
   let now = paused ? input.pausedUntil! : input.now;
   let after: ScheduleTrigger = paused ? 'resume' : input.after;
   const today = startOfDay(input.now);
   const out: PlannedReminder[] = [];
   for (let i = 0; i < input.count; i++) {
-    const glassesToday = startOfDay(now) > today ? 0 : input.glassesToday;
-    const at = nextReminderTime({ settings: input.settings, now, glassesToday, after });
+    const doneToday = startOfDay(now) > today ? 0 : input.doneToday;
+    const at = next({ now, doneToday, after });
     if (at === null) break;
     out.push({ at, snoozed: after === 'later' });
     now = at;
@@ -140,18 +155,26 @@ export function planReminders(input: NextReminderInput & { count: number; paused
   return out;
 }
 
-/** When the next reminder should fire, or null when reminders are off or nothing is scheduled. */
-export function nextReminderTime({ settings, now, glassesToday, after }: NextReminderInput): number | null {
-  if (!settings.enabled) return null;
+/** The first of several reminders' plans, merged in time order (Android schedules them as notifications). */
+export function mergePlans<T extends PlannedReminder>(plans: T[][], count: number): T[] {
+  return plans
+    .flat()
+    .sort((a, b) => a.at - b.at)
+    .slice(0, count);
+}
+
+/** When the next water (interval) reminder should fire, or null when it's off or nothing is scheduled. */
+export function nextReminderTime({ reminder, now, doneToday, after }: NextReminderInput): number | null {
+  if (!reminder.enabled) return null;
   let candidate: number;
   if (after === 'later') {
-    candidate = now + settings.snoozeMinutes * MINUTE;
+    candidate = now + reminder.snoozeMinutes * MINUTE;
   } else if (after === 'resume') {
     candidate = now + MINUTE; // welcome back: nudge soon after a pause ends
   } else {
-    const interval = reminderInterval(settings, glassesToday, now);
+    const interval = reminderInterval(reminder, doneToday, now);
     // Goal met for today: wait for tomorrow, when the count starts again.
     candidate = interval === 'goal-reached' ? addDays(startOfDay(now), 1) : now + interval * MINUTE;
   }
-  return alignToSchedule(settings.schedule, candidate);
+  return alignToSchedule(reminder.schedule, candidate);
 }

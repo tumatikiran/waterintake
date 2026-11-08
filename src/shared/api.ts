@@ -4,10 +4,10 @@
  * src/renderer/mobile/bridge.ts (Capacitor storage and notifications).
  * The React UI is the same on both.
  */
+import type { SettingsPatch } from './settings';
 import type {
   AppState,
   CharacterInfo,
-  DeepPartial,
   HitRegion,
   ImportResult,
   ReminderContext,
@@ -24,8 +24,11 @@ export interface AquaMateApi {
   // ----------------------------------------------------------- settings UI
   getState(): Promise<AppState>;
   onState(cb: (state: AppState) => void): Unsubscribe;
-  updateSettings(patch: DeepPartial<Settings>): Promise<Settings>;
-  testReminder(): void;
+  updateSettings(patch: SettingsPatch): Promise<Settings>;
+  /** Changes one reminder's settings (see shared/reminders.ts for each type's fields). */
+  updateReminder(id: string, patch: Record<string, unknown>): Promise<Settings>;
+  /** Shows a reminder now (the water reminder when no id is given). */
+  testReminder(id?: string): void;
   logGlass(): Promise<number>;
   pause(minutes: number | 'tomorrow'): void;
   resume(): void;
